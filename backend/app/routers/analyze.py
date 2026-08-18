@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from openai import OpenAIError
@@ -15,7 +16,7 @@ from app.scoring import score_resume
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["analyze"])
 
-MAX_TAILORED_BULLETS = 6
+MAX_TAILORED_BULLETS = 15
 MAX_KEYWORDS = 25
 # Pasted job descriptions are often copied straight off a job-board page and
 # carry a lot of navigation/UI clutter ("Apply now", "Add to cart", cookie
@@ -89,6 +90,78 @@ def generate_tailored_bullets(resume_text: str, groundable_keywords: list[str]) 
         and b["original"] != b["tailored"]
         and b["original"] in resume_text  # enforce real grounding, not just non-empty
     ][:MAX_TAILORED_BULLETS]
+
+
+_SUMMARY_HEADING_RE = re.compile(r"^\s*(summary|objective|profile)\s*$", re.IGNORECASE)
+_SECTION_HEADING_RE = re.compile(r"^[A-Za-z][A-Za-z /]{1,30}$")
+
+
+def _extract_summary_paragraph(resume_text: str) -> str | None:
+    """Find the Summary/Objective section (if any) and return the exact verbatim
+    substring of resume_text spanning its paragraph — a re-joined/re-wrapped copy
+    would no longer be a substring of resume_text, breaking the exact-match
+    substitution both here and on the frontend."""
+    lines = resume_text.split("\n")
+    start = next(
+        (i + 1 for i, line in enumerate(lines) if _SUMMARY_HEADING_RE.match(line.strip())), None
+    )
+    if start is None:
+        return None
+    while start < len(lines) and not lines[start].strip():
+        start += 1  # skip blank lines right after the heading
+    end = start
+    for i in range(start, len(lines)):
+        stripped = lines[i].strip()
+        if not stripped:
+            break
+        # An all-caps short line is almost certainly the next section heading.
+        if _SECTION_HEADING_RE.match(stripped) and stripped == stripped.upper():
+            break
+        end = i + 1
+    if end <= start:
+        return None
+    return "\n".join(lines[start:end])
+
+
+def generate_summary_tailoring(resume_text: str, jd_text: str) -> list[dict]:
+    """Rewrite the resume's Summary/Objective paragraph (if it has one) to better
+    emphasize genuinely relevant experience already described elsewhere on the
+    resume, in the JD's language where that's truthfully applicable. Returned in
+    the same {section, original, tailored} shape as generate_tailored_bullets so
+    it flows through the same grounded-substitution and export pipeline."""
+    original_summary = _extract_summary_paragraph(resume_text)
+    if not original_summary:
+        return []
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Rewrite a resume's summary/objective paragraph to better emphasize "
+                "the candidate's genuinely relevant experience and skills for a "
+                "specific job, reusing the job description's language only where it "
+                "truthfully matches something already described elsewhere on the "
+                "resume. Do NOT add any skill, credential, employer, or experience "
+                "that isn't already present on the resume — only reframe and "
+                "re-emphasize what's genuinely there, and keep it roughly the same "
+                "length as the original. Respond with JSON only, no prose: "
+                '{"tailored_summary": "<rewritten paragraph>"}'
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Full resume (for context — only rewrite the summary below):\n"
+                f"{resume_text[:MAX_RESUME_CHARS]}\n\n"
+                f"Current summary:\n{original_summary}\n\n"
+                f"Job description:\n{jd_text[:MAX_JD_CHARS]}"
+            ),
+        },
+    ]
+    result = ai_client.chat_json(messages)
+    tailored = result.get("tailored_summary") if isinstance(result, dict) else None
+    if not isinstance(tailored, str) or not tailored.strip() or tailored.strip() == original_summary:
+        return []
+    return [{"section": "Summary", "original": original_summary, "tailored": tailored.strip()}]
 
 
 MAX_PROJECT_SUGGESTIONS = 3
@@ -179,7 +252,9 @@ def analyze(
         groundable_keywords = [
             kw for kw in result["missing_keywords"] if kw not in result["gap_candidates"]
         ]
-        tailored_bullets = generate_tailored_bullets(resume.raw_text, groundable_keywords)
+        tailored_bullets = generate_tailored_bullets(
+            resume.raw_text, groundable_keywords
+        ) + generate_summary_tailoring(resume.raw_text, jd.raw_text)
         gap_flags = generate_gap_flags(jd.raw_text, result["gap_candidates"])
     except (json.JSONDecodeError, OpenAIError) as exc:
         logger.exception("AI analysis step failed for resume_id=%s jd_id=%s", resume.id, jd.id)

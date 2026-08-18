@@ -316,3 +316,62 @@ def test_get_analysis_by_id(client, auth_headers, monkeypatch):
 def test_get_analysis_404_for_missing_or_other_users(client, auth_headers):
     resp = client.get("/analyses/9999", headers=auth_headers)
     assert resp.status_code == 404
+
+
+RESUME_WITH_SUMMARY = """John Doe
+
+Summary
+Backend engineer with 3 years building APIs.
+Comfortable working across the stack when needed.
+
+Experience
+- Built REST APIs in Python using FastAPI for a fintech startup
+
+Education
+BS in Computer Science
+
+Skills
+Python, SQL
+"""
+
+
+def test_extract_summary_paragraph_is_exact_verbatim_substring():
+    extracted = analyze_router._extract_summary_paragraph(RESUME_WITH_SUMMARY)
+    assert extracted is not None
+    assert extracted in RESUME_WITH_SUMMARY  # must be a real substring for grounded substitution
+    assert extracted == (
+        "Backend engineer with 3 years building APIs.\n"
+        "Comfortable working across the stack when needed."
+    )
+
+
+def test_extract_summary_paragraph_returns_none_when_absent():
+    assert analyze_router._extract_summary_paragraph(RESUME_TEXT) is None
+
+
+def test_generate_summary_tailoring_returns_empty_when_no_summary_section(monkeypatch):
+    called = []
+    monkeypatch.setattr(ai_client, "chat_json", lambda *a, **kw: called.append(1) or {})
+    assert analyze_router.generate_summary_tailoring(RESUME_TEXT, JD_TEXT) == []
+    assert called == []  # short-circuited before ever calling the model
+
+
+def test_generate_summary_tailoring_returns_grounded_entry(monkeypatch):
+    monkeypatch.setattr(
+        ai_client,
+        "chat_json",
+        lambda *a, **kw: {
+            "tailored_summary": "Backend engineer with 3 years building Python APIs and Docker deployments."
+        },
+    )
+    result = analyze_router.generate_summary_tailoring(RESUME_WITH_SUMMARY, JD_TEXT)
+    assert len(result) == 1
+    assert result[0]["section"] == "Summary"
+    assert result[0]["original"] in RESUME_WITH_SUMMARY
+    assert "Docker" in result[0]["tailored"]
+
+
+def test_generate_summary_tailoring_drops_unchanged_output(monkeypatch):
+    original = analyze_router._extract_summary_paragraph(RESUME_WITH_SUMMARY)
+    monkeypatch.setattr(ai_client, "chat_json", lambda *a, **kw: {"tailored_summary": original})
+    assert analyze_router.generate_summary_tailoring(RESUME_WITH_SUMMARY, JD_TEXT) == []
