@@ -35,7 +35,10 @@ def _fake_chat_json(messages, *args, **kwargs):
                 {
                     "title": "Containerized FastAPI Service on Kubernetes",
                     "covers_skills": ["Kubernetes"],
-                    "description": "Deploy a small FastAPI app to a local kind/minikube cluster with a Helm chart.",
+                    "bullets": [
+                        "Deployed a FastAPI app to a local kind/minikube cluster with a Helm chart",
+                        "Automated [N]+ deployment scenarios, reducing manual rollout steps by [X]%",
+                    ],
                     "why_valuable": "Directly demonstrates the Kubernetes orchestration skill this JD requires",
                 }
             ]
@@ -88,7 +91,7 @@ def test_analyze_full_flow_with_mocked_nim(client, auth_headers, monkeypatch):
     assert len(body["gap_flags"]) == 1
     assert body["gap_flags"][0]["title"]
     assert "Kubernetes" in body["gap_flags"][0]["covers_skills"]
-    assert body["gap_flags"][0]["description"]
+    assert len(body["gap_flags"][0]["bullets"]) > 0
     assert "Kubernetes" not in body["matched_keywords"]
 
 
@@ -205,13 +208,17 @@ def test_generate_gap_flags_consolidates_multiple_skills_per_project(monkeypatch
                 {
                     "title": "Full-Stack Task Tracker",
                     "covers_skills": ["React", "Node.js", "PostgreSQL", "Docker"],
-                    "description": "Build and containerize a task tracker with a React frontend, Node.js API, and PostgreSQL.",
+                    "bullets": [
+                        "Built and containerized a task tracker with a React frontend, Node.js API, and PostgreSQL",
+                    ],
                     "why_valuable": "Covers four required skills in one coherent, buildable project.",
                 },
                 {
                     "title": "Kubernetes Deployment Pipeline",
                     "covers_skills": ["Kubernetes", "CI/CD"],
-                    "description": "Set up a CI/CD pipeline that deploys the task tracker to a local Kubernetes cluster.",
+                    "bullets": [
+                        "Set up a CI/CD pipeline that deploys the task tracker to a local Kubernetes cluster",
+                    ],
                     "why_valuable": "Directly demonstrates the orchestration and CI/CD skills this JD requires.",
                 },
             ]
@@ -232,11 +239,11 @@ def test_generate_gap_flags_drops_incomplete_entries(monkeypatch):
         "chat_json",
         lambda *a, **kw: {
             "projects": [
-                {"title": "Missing skills field", "description": "x", "why_valuable": "y"},
+                {"title": "Missing skills field", "bullets": ["x"], "why_valuable": "y"},
                 {
                     "title": "Complete entry",
                     "covers_skills": ["Docker"],
-                    "description": "x",
+                    "bullets": ["x"],
                     "why_valuable": "y",
                 },
             ]

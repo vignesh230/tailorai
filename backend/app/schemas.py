@@ -69,7 +69,7 @@ class TailoredBullet(BaseModel):
 class ProjectSuggestion(BaseModel):
     title: str
     covers_skills: list[str]
-    description: str
+    bullets: list[str]
     why_valuable: str
 
 

@@ -1,14 +1,13 @@
 import { ProjectSuggestion, TailoredBullet } from "./api";
 import { buildLatexResume } from "./latex";
-import { ParsedResume, parseResumeSections } from "./resumeRender";
-
-const PROJECTS_MARKER = "\n\nAdditional Projects (Suggested)\n";
+import { isHeadingLine, ParsedResume, parseResumeSections } from "./resumeRender";
 
 /** Substitute each tailored bullet back into the resume text (best-effort verbatim
- * match), and append any user-selected suggested projects as a new section.
- * Bullets that can't be located verbatim are appended as a suggestions section
- * instead of being silently dropped. Selecting projects is opt-in — nothing is
- * added to the resume unless the caller explicitly passes it in. */
+ * match), and replace the resume's Projects section with the current selection
+ * of suggested projects. Bullets that can't be located verbatim are appended as
+ * a suggestions section instead of being silently dropped. Selecting projects
+ * is opt-in — the Projects section is only touched once at least one is
+ * selected (or was previously selected — see replaceProjectsSection). */
 export function buildTailoredResumeText(
   resumeText: string,
   bullets: TailoredBullet[],
@@ -31,25 +30,48 @@ export function buildTailoredResumeText(
       unmatched.map((b) => `- ${b.tailored}`).join("\n");
   }
 
-  return withProjectsBlock(text, selectedProjects);
+  return replaceProjectsSection(text, selectedProjects);
 }
 
-/** Replace the "Additional Projects (Suggested)" section of a (possibly
- * hand-edited) resume draft with the current selection, leaving everything
- * before it untouched. Each project renders as a proper entry (title + tech
- * stack + description) that the PDF/Word/LaTeX renderers pick up as a normal
- * resume entry. ponytail: a hand-edit that adds content *after* an existing
- * Projects block gets cut when the block is next updated — acceptable for a
- * single trailing section; upgrade to per-line diffing if that turns out to
- * matter. */
-export function withProjectsBlock(text: string, projects: ProjectSuggestion[]): string {
-  const markerIndex = text.indexOf(PROJECTS_MARKER);
-  const base = markerIndex === -1 ? text : text.slice(0, markerIndex);
-  if (projects.length === 0) return base;
-  const block = projects
-    .map((p) => `${p.title}\n${p.covers_skills.join(", ")}\n- ${p.description}`)
-    .join("\n\n");
-  return `${base}${PROJECTS_MARKER}${block}`;
+function isProjectsHeadingLine(line: string): boolean {
+  return isHeadingLine(line) && /project/i.test(line);
+}
+
+/** Replace the resume's Projects section (wherever it is, however it's
+ * currently titled) with the current set of selected suggested projects —
+ * per explicit user choice, this REPLACES the original project entries
+ * rather than appending alongside them. If there's no Projects section yet,
+ * one is added. If the selection is empty, the section (heading included)
+ * is removed. Everything outside the Projects section is left untouched, so
+ * hand-edits elsewhere in the draft survive repeated toggling. */
+export function replaceProjectsSection(text: string, projects: ProjectSuggestion[]): string {
+  const lines = text.split("\n");
+  const startIndex = lines.findIndex((l) => isProjectsHeadingLine(l));
+
+  const entryLines = projects.flatMap((p) => [
+    p.title,
+    p.covers_skills.join(", "),
+    ...p.bullets.map((b) => `- ${b}`),
+    "",
+  ]);
+  if (entryLines[entryLines.length - 1] === "") entryLines.pop();
+  const newSection = projects.length > 0 ? ["Projects", ...entryLines, ""] : [];
+
+  if (startIndex === -1) {
+    if (projects.length === 0) return text;
+    const base = text.replace(/\s+$/, "");
+    return `${base}\n\n${newSection.join("\n")}`.replace(/\n+$/, "\n");
+  }
+
+  let endIndex = lines.length;
+  for (let i = startIndex + 1; i < lines.length; i++) {
+    if (isHeadingLine(lines[i])) {
+      endIndex = i;
+      break;
+    }
+  }
+
+  return [...lines.slice(0, startIndex), ...newSection, ...lines.slice(endIndex)].join("\n");
 }
 
 function triggerDownload(filename: string, blob: Blob) {

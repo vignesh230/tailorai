@@ -48,7 +48,7 @@ function isKnownHeading(line: string): boolean {
   return KNOWN_HEADINGS.some((h) => lower === h || lower.startsWith(h));
 }
 
-function isHeadingLine(line: string): boolean {
+export function isHeadingLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed || trimmed.length > 40) return false;
   if (isKnownHeading(trimmed)) return true;

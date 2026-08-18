@@ -115,9 +115,19 @@ def generate_gap_flags(jd_text: str, gap_candidates: list[str]) -> list[dict]:
                 "framework, a backend framework, a database, and a deployment tool all "
                 "at once) — don't force unrelated skills together just to shorten the "
                 "list. Every skill in the input list should end up covered by at least "
-                "one project if at all feasible. Respond with JSON only, no prose: "
+                "one project if at all feasible.\n\n"
+                "For each project, write 2-3 resume-style bullet points describing what "
+                "would be built, in the same voice as a real resume bullet: start with a "
+                "strong action verb (Built, Implemented, Automated, Integrated, Designed, "
+                "...). This project has NOT been built yet, so NEVER invent a specific "
+                "number, count, or percentage. Anywhere a finished project's bullet would "
+                "normally carry a metric, use a bracketed placeholder instead — [N]+ for "
+                "counts, [X]% for percentages, [Y] for other measurements — so the "
+                "candidate fills in their own real result once they build and measure it "
+                "(e.g. 'automating [N]+ validation scenarios, reducing manual effort by "
+                "[X]%'). Respond with JSON only, no prose: "
                 '{"projects": [{"title": "...", "covers_skills": ["..."], '
-                '"description": "<1-2 sentences on what to build>", '
+                '"bullets": ["<bullet with [N]/[X] placeholders where a real project would have metrics>", "..."], '
                 '"why_valuable": "<1 sentence on why this matters for this job>"}]}'
             ),
         },
@@ -134,7 +144,8 @@ def generate_gap_flags(jd_text: str, gap_candidates: list[str]) -> list[dict]:
         if isinstance(p, dict)
         and p.get("title")
         and p.get("covers_skills")
-        and p.get("description")
+        and isinstance(p.get("bullets"), list)
+        and len(p["bullets"]) > 0
         and p.get("why_valuable")
     ][:MAX_PROJECT_SUGGESTIONS]
 

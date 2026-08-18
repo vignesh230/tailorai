@@ -24,7 +24,7 @@ export interface TailoredBullet {
 export interface ProjectSuggestion {
   title: string;
   covers_skills: string[];
-  description: string;
+  bullets: string[];
   why_valuable: string;
 }
 

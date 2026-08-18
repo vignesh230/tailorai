@@ -10,7 +10,7 @@ import {
   downloadLatex,
   downloadPdf,
   downloadWord,
-  withProjectsBlock,
+  replaceProjectsSection,
 } from "@/lib/export";
 
 interface StoredAnalysis {
@@ -94,7 +94,7 @@ export default function ResultsPage() {
       else next.add(title);
 
       const nextProjects = analysis.gap_flags.filter((g) => next.has(g.title));
-      setResumeDraft((prevDraft) => withProjectsBlock(prevDraft, nextProjects));
+      setResumeDraft((prevDraft) => replaceProjectsSection(prevDraft, nextProjects));
 
       return next;
     });
@@ -292,8 +292,11 @@ export default function ResultsPage() {
             <p className="mb-3 text-xs text-red-700">
               None of these skills are in your resume — nothing was fabricated. These{" "}
               {analysis.gap_flags.length} project{analysis.gap_flags.length > 1 ? "s" : ""}{" "}
-              together cover every missing skill above. Check any you plan to build; it&apos;ll
-              appear in the tailored resume above.
+              together cover every missing skill above. Checking one <strong>replaces</strong>{" "}
+              your resume&apos;s Projects section with the checked suggestions (your original
+              projects are still in the &quot;Reset to AI suggestion&quot; version above if you
+              want them back). Bullets use [N]/[X] placeholders instead of invented numbers —
+              fill in your real results once you&apos;ve actually built and measured each one.
             </p>
             <ul className="flex flex-col gap-4">
               {analysis.gap_flags.map((g) => (
@@ -316,8 +319,12 @@ export default function ResultsPage() {
                         </span>
                       ))}
                     </div>
-                    <p className="text-red-800">{g.description}</p>
-                    <p className="text-red-700">{g.why_valuable}</p>
+                    <ul className="list-disc pl-5 text-red-800">
+                      {g.bullets.map((bullet, i) => (
+                        <li key={i}>{bullet}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-red-700">{g.why_valuable}</p>
                   </div>
                 </li>
               ))}
