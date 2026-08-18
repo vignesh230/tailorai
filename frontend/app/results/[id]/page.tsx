@@ -39,6 +39,18 @@ export default function ResultsPage() {
     }
   }, [loading, user, router, params.id]);
 
+  // Hooks must run unconditionally on every render, so these are computed here
+  // (with null-safe fallbacks) rather than after the early returns below.
+  const selectedProjects = useMemo(
+    () => (data ? data.analysis.gap_flags.filter((g) => selectedGaps.has(g.skill)) : []),
+    [data, selectedGaps]
+  );
+  const tailoredResumeText = useMemo(
+    () =>
+      data ? buildTailoredResumeText(data.resumeText, data.analysis.tailored_bullets, selectedProjects) : "",
+    [data, selectedProjects]
+  );
+
   if (loading || !user) return null;
 
   if (notFound) {
@@ -56,15 +68,8 @@ export default function ResultsPage() {
 
   if (!data) return null;
 
-  const { analysis, resumeText } = data;
+  const { analysis } = data;
   const { component_breakdown: cb } = analysis;
-
-  const selectedProjects = analysis.gap_flags.filter((g) => selectedGaps.has(g.skill));
-  const tailoredResumeText = useMemo(
-    () => buildTailoredResumeText(resumeText, analysis.tailored_bullets, selectedProjects),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [resumeText, analysis.tailored_bullets, selectedGaps]
-  );
 
   function toggleGap(skill: string) {
     setSelectedGaps((prev) => {
