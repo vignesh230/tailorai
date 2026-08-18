@@ -115,6 +115,34 @@ def test_generate_tailored_bullets_empty_when_no_groundable_keywords():
     assert analyze_router.generate_tailored_bullets(RESUME_TEXT, []) == []
 
 
+def test_extract_jd_keywords_caps_input_length(monkeypatch):
+    """Regression test: a JD pasted from a job board can carry tens of thousands
+    of characters of unrelated page chrome. Sending all of it risked the model
+    spiraling into a runaway response that kept truncating even after growing
+    the token budget to its ceiling (observed live: 36K+ characters, still
+    truncated). The prompt sent to the model must be capped."""
+    captured = {}
+
+    def fake_chat_json(messages, *args, **kwargs):
+        captured["user_content"] = messages[1]["content"]
+        return {"keywords": ["Python"]}
+
+    monkeypatch.setattr(ai_client, "chat_json", fake_chat_json)
+    huge_jd = "Apply now\nAdd to cart\n" + ("Software Engineer role. " * 2000)
+    analyze_router.extract_jd_keywords(huge_jd)
+    assert len(captured["user_content"]) <= analyze_router.MAX_JD_CHARS
+
+
+def test_extract_jd_keywords_caps_output_length(monkeypatch):
+    monkeypatch.setattr(
+        ai_client,
+        "chat_json",
+        lambda *a, **kw: {"keywords": [f"skill-{i}" for i in range(100)]},
+    )
+    keywords = analyze_router.extract_jd_keywords(JD_TEXT)
+    assert len(keywords) == analyze_router.MAX_KEYWORDS
+
+
 def test_generate_tailored_bullets_filters_ungrounded_and_junk_entries(monkeypatch):
     """Regression test: the model sometimes returns filler entries like
     {"original": "None", "tailored": "None"} for sections it has nothing to say

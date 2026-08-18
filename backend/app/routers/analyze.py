@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["analyze"])
 
 MAX_TAILORED_BULLETS = 6
+MAX_KEYWORDS = 25
+# Pasted job descriptions are often copied straight off a job-board page and
+# carry a lot of navigation/UI clutter ("Apply now", "Add to cart", cookie
+# banners). A few thousand characters is far more than any real JD's actual
+# content needs, and capping it also protects against feeding the model
+# enough repetitive noise to spiral into a runaway, never-terminating
+# response (observed live: a 36K+ character JSON response that kept
+# truncating even after the token budget was grown to its ceiling).
+MAX_JD_CHARS = 6000
+MAX_RESUME_CHARS = 6000
 
 
 def extract_jd_keywords(jd_text: str) -> list[str]:
@@ -24,17 +34,21 @@ def extract_jd_keywords(jd_text: str) -> list[str]:
             "role": "system",
             "content": (
                 "You extract required skills and keywords from job descriptions. "
+                "The input may include website navigation, buttons, or boilerplate "
+                "(e.g. 'Apply now', 'Add to cart', cookie banners, unrelated site "
+                "chrome) mixed in with the actual job description — ignore all of "
+                "that and extract keywords ONLY from genuine job requirements. "
                 "Respond with JSON only, no prose: {\"keywords\": [\"...\"]}. "
                 "Include concrete skills, tools, technologies, certifications, and "
-                "role-specific requirements (10-25 items). Skip generic filler like "
-                "'team player' or 'good communicator'."
+                f"role-specific requirements — at most {MAX_KEYWORDS} items, each a short "
+                "phrase. Skip generic filler like 'team player' or 'good communicator'."
             ),
         },
-        {"role": "user", "content": jd_text},
+        {"role": "user", "content": jd_text[:MAX_JD_CHARS]},
     ]
     result = ai_client.chat_json(messages)
     keywords = result.get("keywords", []) if isinstance(result, dict) else []
-    return [k.strip() for k in keywords if isinstance(k, str) and k.strip()]
+    return [k.strip() for k in keywords if isinstance(k, str) and k.strip()][:MAX_KEYWORDS]
 
 
 def generate_tailored_bullets(resume_text: str, groundable_keywords: list[str]) -> list[dict]:
@@ -59,7 +73,7 @@ def generate_tailored_bullets(resume_text: str, groundable_keywords: list[str]) 
         {
             "role": "user",
             "content": (
-                f"Resume:\n{resume_text}\n\n"
+                f"Resume:\n{resume_text[:MAX_RESUME_CHARS]}\n\n"
                 f"Keywords to naturally incorporate where truthful: {groundable_keywords}"
             ),
         },
@@ -109,7 +123,7 @@ def generate_gap_flags(jd_text: str, gap_candidates: list[str]) -> list[dict]:
         },
         {
             "role": "user",
-            "content": f"Job description:\n{jd_text}\n\nMissing skills: {gap_candidates}",
+            "content": f"Job description:\n{jd_text[:MAX_JD_CHARS]}\n\nMissing skills: {gap_candidates}",
         },
     ]
     result = ai_client.chat_json(messages)
