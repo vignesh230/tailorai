@@ -1,4 +1,7 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from openai import OpenAIError
 from sqlalchemy.orm import Session
 
 from app import ai_client
@@ -120,14 +123,20 @@ def analyze(
     if not jd:
         raise HTTPException(status_code=404, detail="Job description not found")
 
-    jd_keywords = extract_jd_keywords(jd.raw_text)
-    result = score_resume(jd_keywords, resume.raw_text, embed_fn=ai_client.embed)
+    try:
+        jd_keywords = extract_jd_keywords(jd.raw_text)
+        result = score_resume(jd_keywords, resume.raw_text, embed_fn=ai_client.embed)
 
-    groundable_keywords = [
-        kw for kw in result["missing_keywords"] if kw not in result["gap_candidates"]
-    ]
-    tailored_bullets = generate_tailored_bullets(resume.raw_text, groundable_keywords)
-    gap_flags = generate_gap_flags(jd.raw_text, result["gap_candidates"])
+        groundable_keywords = [
+            kw for kw in result["missing_keywords"] if kw not in result["gap_candidates"]
+        ]
+        tailored_bullets = generate_tailored_bullets(resume.raw_text, groundable_keywords)
+        gap_flags = generate_gap_flags(jd.raw_text, result["gap_candidates"])
+    except (json.JSONDecodeError, OpenAIError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The AI analysis step failed (NIM returned an unusable response). Please try again.",
+        ) from exc
 
     analysis = Analysis(
         user_id=current_user.id,

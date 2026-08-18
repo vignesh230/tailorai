@@ -113,5 +113,22 @@ def test_generate_tailored_bullets_empty_when_no_groundable_keywords():
     assert analyze_router.generate_tailored_bullets(RESUME_TEXT, []) == []
 
 
+def test_analyze_returns_502_when_ai_response_is_unparseable(client, auth_headers, monkeypatch):
+    import json
+
+    def _broken_chat_json(*args, **kwargs):
+        raise json.JSONDecodeError("Unterminated string", "doc", 0)
+
+    monkeypatch.setattr(ai_client, "chat_json", _broken_chat_json)
+    monkeypatch.setattr(ai_client, "embed", _fake_embed)
+
+    resume_id, jd_id = _setup_resume_and_jd(client, auth_headers)
+    resp = client.post(
+        "/analyze", json={"resume_id": resume_id, "jd_id": jd_id}, headers=auth_headers
+    )
+    assert resp.status_code == 502
+    assert "detail" in resp.json()
+
+
 def test_generate_gap_flags_empty_when_no_gap_candidates():
     assert analyze_router.generate_gap_flags(JD_TEXT, []) == []

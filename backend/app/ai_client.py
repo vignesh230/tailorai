@@ -38,17 +38,30 @@ def chat(messages: list[dict], temperature: float = 0.2, max_tokens: int = 1024)
     return _retry(_call)
 
 
-def chat_json(messages: list[dict], temperature: float = 0.2, max_tokens: int = 1536) -> dict | list:
-    """Chat call where the model is instructed to return JSON only. Parses defensively."""
-    raw = chat(messages, temperature=temperature, max_tokens=max_tokens)
-    cleaned = _JSON_FENCE_RE.sub("", raw.strip()).strip()
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        match = _JSON_BLOCK_RE.search(cleaned)
-        if match:
-            return json.loads(match.group(1))
-        raise
+def chat_json(
+    messages: list[dict], temperature: float = 0.2, max_tokens: int = 2048, max_attempts: int = 3
+) -> dict | list:
+    """Chat call where the model is instructed to return JSON only. Parses defensively
+    (strips code fences, falls back to extracting the first {...}/[...] block). If the
+    response is truncated mid-JSON (model ran out of its token budget on a large
+    input), retries with a doubled token budget rather than failing outright."""
+    last_exc: json.JSONDecodeError | None = None
+    tokens = max_tokens
+    for attempt in range(max_attempts):
+        raw = chat(messages, temperature=temperature, max_tokens=tokens)
+        cleaned = _JSON_FENCE_RE.sub("", raw.strip()).strip()
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            match = _JSON_BLOCK_RE.search(cleaned)
+            if match:
+                try:
+                    return json.loads(match.group(1))
+                except json.JSONDecodeError:
+                    pass
+            last_exc = exc
+            tokens = min(tokens * 2, 8192)
+    raise last_exc
 
 
 def embed(texts: list[str]) -> list[list[float]]:
