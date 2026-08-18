@@ -1,0 +1,117 @@
+from app import ai_client
+from app.routers import analyze as analyze_router
+
+RESUME_TEXT = """Experience
+- Built REST APIs in Python using FastAPI for a fintech startup
+- Wrote unit tests with pytest
+
+Education
+BS in Computer Science
+
+Skills
+Python, SQL
+"""
+
+JD_TEXT = "Looking for a backend engineer with Python, Docker, and Kubernetes experience."
+
+
+def _fake_chat_json(messages, *args, **kwargs):
+    system_content = messages[0]["content"]
+    if "extract required skills" in system_content:
+        return {"keywords": ["Python", "Docker", "Kubernetes"]}
+    if "tailor resume bullets" in system_content:
+        return {
+            "bullets": [
+                {
+                    "section": "Experience",
+                    "original": "- Built REST APIs in Python using FastAPI for a fintech startup",
+                    "tailored": "- Built and containerized REST APIs in Python/FastAPI with Docker for a fintech startup",
+                }
+            ]
+        }
+    if "suggest ONE concrete" in system_content:
+        return {
+            "gaps": [
+                {
+                    "skill": "Kubernetes",
+                    "suggested_project": "Deploy a small FastAPI app to a local kind/minikube cluster with a Helm chart",
+                    "why_valuable": "Directly demonstrates the Kubernetes orchestration skill this JD requires",
+                }
+            ]
+        }
+    raise AssertionError(f"unexpected prompt: {system_content}")
+
+
+def _fake_embed(texts):
+    # "docker" cluster vs "kubernetes" cluster so Kubernetes reliably fails the
+    # semantic threshold and lands in gap_candidates.
+    vectors = []
+    for t in texts:
+        if "kubernetes" in t.lower():
+            vectors.append([0.0, 1.0])
+        else:
+            vectors.append([1.0, 0.0])
+    return vectors
+
+
+def _setup_resume_and_jd(client, auth_headers):
+    resume_resp = client.post(
+        "/resumes", json={"title": "My Resume", "raw_text": RESUME_TEXT}, headers=auth_headers
+    )
+    jd_resp = client.post(
+        "/job-descriptions", json={"title": "Backend Role", "raw_text": JD_TEXT}, headers=auth_headers
+    )
+    return resume_resp.json()["id"], jd_resp.json()["id"]
+
+
+def test_analyze_full_flow_with_mocked_nim(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(ai_client, "chat_json", _fake_chat_json)
+    monkeypatch.setattr(ai_client, "embed", _fake_embed)
+
+    resume_id, jd_id = _setup_resume_and_jd(client, auth_headers)
+
+    resp = client.post(
+        "/analyze", json={"resume_id": resume_id, "jd_id": jd_id}, headers=auth_headers
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+
+    assert 0 <= body["ats_score"] <= 100
+    assert "Python" in body["matched_keywords"]
+    assert "Docker" in body["missing_keywords"]  # missing verbatim, but groundable via semantic match
+    assert body["component_breakdown"]["keyword_weight"] == 0.5
+
+    assert len(body["tailored_bullets"]) == 1
+    assert "Docker" in body["tailored_bullets"][0]["tailored"]
+
+    assert len(body["gap_flags"]) == 1
+    assert body["gap_flags"][0]["skill"] == "Kubernetes"
+    assert body["gap_flags"][0]["suggested_project"]
+    assert "Kubernetes" not in body["matched_keywords"]
+
+
+def test_analyze_requires_auth(client):
+    resp = client.post("/analyze", json={"resume_id": 1, "jd_id": 1})
+    assert resp.status_code == 401
+
+
+def test_analyze_404_for_other_users_resume(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(ai_client, "chat_json", _fake_chat_json)
+    monkeypatch.setattr(ai_client, "embed", _fake_embed)
+
+    resp = client.post("/analyze", json={"resume_id": 9999, "jd_id": 9999}, headers=auth_headers)
+    assert resp.status_code == 404
+
+
+def test_extract_jd_keywords_parses_mocked_response(monkeypatch):
+    monkeypatch.setattr(ai_client, "chat_json", _fake_chat_json)
+    keywords = analyze_router.extract_jd_keywords(JD_TEXT)
+    assert keywords == ["Python", "Docker", "Kubernetes"]
+
+
+def test_generate_tailored_bullets_empty_when_no_groundable_keywords():
+    assert analyze_router.generate_tailored_bullets(RESUME_TEXT, []) == []
+
+
+def test_generate_gap_flags_empty_when_no_gap_candidates():
+    assert analyze_router.generate_gap_flags(JD_TEXT, []) == []
