@@ -1,4 +1,5 @@
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from openai import OpenAIError
@@ -11,6 +12,7 @@ from app.models import Analysis, JobDescription, Resume, User
 from app.schemas import AnalyzeRequest, AnalysisOut
 from app.scoring import score_resume
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["analyze"])
 
 MAX_TAILORED_BULLETS = 6
@@ -68,7 +70,11 @@ def generate_tailored_bullets(resume_text: str, groundable_keywords: list[str]) 
     return [
         b
         for b in bullets
-        if isinstance(b, dict) and b.get("original") and b.get("tailored")
+        if isinstance(b, dict)
+        and b.get("original")
+        and b.get("tailored")
+        and b["original"] != b["tailored"]
+        and b["original"] in resume_text  # enforce real grounding, not just non-empty
     ][:MAX_TAILORED_BULLETS]
 
 
@@ -133,6 +139,7 @@ def analyze(
         tailored_bullets = generate_tailored_bullets(resume.raw_text, groundable_keywords)
         gap_flags = generate_gap_flags(jd.raw_text, result["gap_candidates"])
     except (json.JSONDecodeError, OpenAIError) as exc:
+        logger.exception("AI analysis step failed for resume_id=%s jd_id=%s", resume.id, jd.id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="The AI analysis step failed (NIM returned an unusable response). Please try again.",

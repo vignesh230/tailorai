@@ -113,6 +113,40 @@ def test_generate_tailored_bullets_empty_when_no_groundable_keywords():
     assert analyze_router.generate_tailored_bullets(RESUME_TEXT, []) == []
 
 
+def test_generate_tailored_bullets_filters_ungrounded_and_junk_entries(monkeypatch):
+    """Regression test: the model sometimes returns filler entries like
+    {"original": "None", "tailored": "None"} for sections it has nothing to say
+    about, or an 'original' that isn't actually verbatim in the resume. Both
+    should be dropped, not just entries with empty strings."""
+
+    def fake_chat_json(messages, *args, **kwargs):
+        return {
+            "bullets": [
+                {"section": "Experience", "original": "None", "tailored": "None"},
+                {
+                    "section": "Experience",
+                    "original": "Wrote unit tests with pytest",
+                    "tailored": "Wrote unit tests with pytest",  # no-op, same text
+                },
+                {
+                    "section": "Experience",
+                    "original": "Text that was never actually on the resume",
+                    "tailored": "Fabricated rewrite",
+                },
+                {
+                    "section": "Experience",
+                    "original": "Wrote unit tests with pytest",
+                    "tailored": "Wrote unit tests with pytest and containerized them with Docker",
+                },
+            ]
+        }
+
+    monkeypatch.setattr(ai_client, "chat_json", fake_chat_json)
+    bullets = analyze_router.generate_tailored_bullets(RESUME_TEXT, ["Docker"])
+    assert len(bullets) == 1
+    assert bullets[0]["original"] == "Wrote unit tests with pytest"
+
+
 def test_analyze_returns_502_when_ai_response_is_unparseable(client, auth_headers, monkeypatch):
     import json
 
