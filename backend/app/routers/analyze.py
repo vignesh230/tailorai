@@ -93,6 +93,11 @@ def extract_jd_keywords(jd_text: str) -> list[str]:
 def generate_tailored_bullets(resume_text: str, groundable_keywords: list[str]) -> list[dict]:
     if not groundable_keywords:
         return []
+    # The Summary/Objective paragraph is generate_summary_tailoring's job, not this
+    # function's — without this exclusion both can independently target the same
+    # paragraph and return two conflicting rewrites of it (observed live: one landed
+    # in the resume, the other fell into the unmatched "Suggested additions" pile).
+    summary_paragraph = _extract_summary_paragraph(resume_text)
     messages = [
         {
             "role": "system",
@@ -100,7 +105,9 @@ def generate_tailored_bullets(resume_text: str, groundable_keywords: list[str]) 
                 "You tailor resume bullets to naturally incorporate specific keywords, "
                 "without keyword stuffing and without ever fabricating experience. Only "
                 "rewrite a bullet if the keyword can be truthfully grounded in what it "
-                "already describes. Respond with JSON only, no prose: "
+                "already describes. Never rewrite the Summary or Objective paragraph — "
+                "that is handled by a separate step; only rewrite Experience/Projects/"
+                "Skills lines. Respond with JSON only, no prose: "
                 '{"bullets": [{"section": "<section name or \'Experience\'>", '
                 '"original": "<verbatim line copied exactly from the resume>", '
                 '"tailored": "<rewritten line>"}]}. '
@@ -126,6 +133,8 @@ def generate_tailored_bullets(resume_text: str, groundable_keywords: list[str]) 
         verbatim = _find_verbatim_line(b["original"], resume_text)
         if not verbatim or verbatim == b["tailored"]:
             continue
+        if summary_paragraph and verbatim in summary_paragraph:
+            continue  # defense-in-depth: don't just trust the prompt instruction
         grounded.append(
             {
                 "section": b.get("section") or "Experience",

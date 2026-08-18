@@ -186,6 +186,28 @@ def test_generate_tailored_bullets_filters_ungrounded_and_junk_entries(monkeypat
     assert bullets[0]["original"] == "Wrote unit tests with pytest"
 
 
+def test_generate_tailored_bullets_never_targets_the_summary_paragraph(monkeypatch):
+    """Regression: generate_summary_tailoring owns the Summary/Objective paragraph.
+    If generate_tailored_bullets also independently rewrites it, the two produce
+    conflicting versions of the same text — observed live: one landed in the
+    resume, the other fell into the unmatched 'Suggested additions' pile."""
+    monkeypatch.setattr(
+        ai_client,
+        "chat_json",
+        lambda *a, **kw: {
+            "bullets": [
+                {
+                    "section": "Summary",
+                    "original": "Backend engineer with 3 years building APIs.",
+                    "tailored": "Backend engineer with 3 years building Python APIs.",
+                }
+            ]
+        },
+    )
+    bullets = analyze_router.generate_tailored_bullets(RESUME_WITH_SUMMARY, ["Python"])
+    assert bullets == []
+
+
 def test_analyze_returns_502_when_ai_response_is_unparseable(client, auth_headers, monkeypatch):
     import json
 
