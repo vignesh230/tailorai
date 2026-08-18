@@ -29,12 +29,13 @@ def _fake_chat_json(messages, *args, **kwargs):
                 }
             ]
         }
-    if "suggest ONE concrete" in system_content:
+    if "design at most" in system_content:
         return {
-            "gaps": [
+            "projects": [
                 {
-                    "skill": "Kubernetes",
-                    "suggested_project": "Deploy a small FastAPI app to a local kind/minikube cluster with a Helm chart",
+                    "title": "Containerized FastAPI Service on Kubernetes",
+                    "covers_skills": ["Kubernetes"],
+                    "description": "Deploy a small FastAPI app to a local kind/minikube cluster with a Helm chart.",
                     "why_valuable": "Directly demonstrates the Kubernetes orchestration skill this JD requires",
                 }
             ]
@@ -85,8 +86,9 @@ def test_analyze_full_flow_with_mocked_nim(client, auth_headers, monkeypatch):
     assert "Docker" in body["tailored_bullets"][0]["tailored"]
 
     assert len(body["gap_flags"]) == 1
-    assert body["gap_flags"][0]["skill"] == "Kubernetes"
-    assert body["gap_flags"][0]["suggested_project"]
+    assert body["gap_flags"][0]["title"]
+    assert "Kubernetes" in body["gap_flags"][0]["covers_skills"]
+    assert body["gap_flags"][0]["description"]
     assert "Kubernetes" not in body["matched_keywords"]
 
 
@@ -166,6 +168,55 @@ def test_analyze_returns_502_when_ai_response_is_unparseable(client, auth_header
 
 def test_generate_gap_flags_empty_when_no_gap_candidates():
     assert analyze_router.generate_gap_flags(JD_TEXT, []) == []
+
+
+def test_generate_gap_flags_consolidates_multiple_skills_per_project(monkeypatch):
+    def fake_chat_json(messages, *args, **kwargs):
+        return {
+            "projects": [
+                {
+                    "title": "Full-Stack Task Tracker",
+                    "covers_skills": ["React", "Node.js", "PostgreSQL", "Docker"],
+                    "description": "Build and containerize a task tracker with a React frontend, Node.js API, and PostgreSQL.",
+                    "why_valuable": "Covers four required skills in one coherent, buildable project.",
+                },
+                {
+                    "title": "Kubernetes Deployment Pipeline",
+                    "covers_skills": ["Kubernetes", "CI/CD"],
+                    "description": "Set up a CI/CD pipeline that deploys the task tracker to a local Kubernetes cluster.",
+                    "why_valuable": "Directly demonstrates the orchestration and CI/CD skills this JD requires.",
+                },
+            ]
+        }
+
+    monkeypatch.setattr(ai_client, "chat_json", fake_chat_json)
+    projects = analyze_router.generate_gap_flags(
+        JD_TEXT, ["React", "Node.js", "PostgreSQL", "Docker", "Kubernetes", "CI/CD"]
+    )
+    assert len(projects) == 2
+    covered = {skill for p in projects for skill in p["covers_skills"]}
+    assert covered == {"React", "Node.js", "PostgreSQL", "Docker", "Kubernetes", "CI/CD"}
+
+
+def test_generate_gap_flags_drops_incomplete_entries(monkeypatch):
+    monkeypatch.setattr(
+        ai_client,
+        "chat_json",
+        lambda *a, **kw: {
+            "projects": [
+                {"title": "Missing skills field", "description": "x", "why_valuable": "y"},
+                {
+                    "title": "Complete entry",
+                    "covers_skills": ["Docker"],
+                    "description": "x",
+                    "why_valuable": "y",
+                },
+            ]
+        },
+    )
+    projects = analyze_router.generate_gap_flags(JD_TEXT, ["Docker"])
+    assert len(projects) == 1
+    assert projects[0]["title"] == "Complete entry"
 
 
 def test_list_analyses_returns_history_with_titles(client, auth_headers, monkeypatch):

@@ -3,9 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Analysis, getAnalysis, getResume } from "@/lib/api";
+import { Analysis, analyze, createResume, getAnalysis, getResume } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { buildTailoredResumeText, downloadPdf, downloadWord, withProjectsBlock } from "@/lib/export";
+import {
+  buildTailoredResumeText,
+  downloadLatex,
+  downloadPdf,
+  downloadWord,
+  withProjectsBlock,
+} from "@/lib/export";
 
 interface StoredAnalysis {
   analysis: Analysis;
@@ -28,6 +34,8 @@ export default function ResultsPage() {
   // The editable draft the user reviews and tweaks before downloading — this is
   // the single source of truth for what actually gets exported.
   const [resumeDraft, setResumeDraft] = useState("");
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [reanalyzeError, setReanalyzeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -79,13 +87,13 @@ export default function ResultsPage() {
   const { analysis, resumeText } = data;
   const { component_breakdown: cb } = analysis;
 
-  function toggleGap(skill: string) {
+  function toggleGap(title: string) {
     setSelectedGaps((prev) => {
       const next = new Set(prev);
-      if (next.has(skill)) next.delete(skill);
-      else next.add(skill);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
 
-      const nextProjects = analysis.gap_flags.filter((g) => next.has(g.skill));
+      const nextProjects = analysis.gap_flags.filter((g) => next.has(g.title));
       setResumeDraft((prevDraft) => withProjectsBlock(prevDraft, nextProjects));
 
       return next;
@@ -93,7 +101,7 @@ export default function ResultsPage() {
   }
 
   function resetDraft() {
-    const selectedProjects = analysis.gap_flags.filter((g) => selectedGaps.has(g.skill));
+    const selectedProjects = analysis.gap_flags.filter((g) => selectedGaps.has(g.title));
     setResumeDraft(buildTailoredResumeText(resumeText, analysis.tailored_bullets, selectedProjects));
   }
 
@@ -103,6 +111,27 @@ export default function ResultsPage() {
 
   function handleDownloadWord() {
     downloadWord("tailored-resume.doc", resumeDraft);
+  }
+
+  function handleDownloadLatex() {
+    downloadLatex("tailored-resume.tex", resumeDraft);
+  }
+
+  async function handleReanalyze() {
+    setReanalyzeError(null);
+    setReanalyzing(true);
+    try {
+      const newResume = await createResume("Tailored Resume", resumeDraft);
+      const result = await analyze(newResume.id, analysis.jd_id);
+      sessionStorage.setItem(
+        `tailorai_analysis_${result.id}`,
+        JSON.stringify({ analysis: result, resumeText: resumeDraft })
+      );
+      router.push(`/results/${result.id}`);
+    } catch (err) {
+      setReanalyzeError(err instanceof Error ? err.message : "Re-analysis failed");
+      setReanalyzing(false);
+    }
   }
 
   return (
@@ -142,7 +171,7 @@ export default function ResultsPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Your tailored resume
           </h2>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button onClick={resetDraft} className="text-sm text-slate-500 underline">
               Reset to AI suggestion
             </button>
@@ -152,11 +181,15 @@ export default function ResultsPage() {
             <button onClick={handleDownloadWord} className="text-sm font-medium text-slate-900 underline">
               Download Word
             </button>
+            <button onClick={handleDownloadLatex} className="text-sm font-medium text-slate-900 underline">
+              Download LaTeX
+            </button>
           </div>
         </div>
         <p className="mb-3 text-xs text-slate-500">
           This is exactly what gets downloaded — edit it directly, or check suggested projects
-          below to add them here (nothing is added unless you pick it).
+          below to add them here (nothing is added unless you pick it). PDF/Word/LaTeX are all
+          rendered from this text with proper section formatting, not a plain text dump.
         </p>
         <textarea
           value={resumeDraft}
@@ -164,6 +197,19 @@ export default function ResultsPage() {
           rows={18}
           className="w-full whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-4 font-mono text-xs"
         />
+        <div className="mt-4 flex items-center gap-3 border-t border-slate-100 pt-4">
+          <button
+            onClick={handleReanalyze}
+            disabled={reanalyzing}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {reanalyzing ? "Re-analyzing..." : "Re-analyze with these changes"}
+          </button>
+          <p className="text-xs text-slate-500">
+            See your real, recalculated ATS score for the resume as edited above.
+          </p>
+        </div>
+        {reanalyzeError && <p className="mt-2 text-sm text-red-600">{reanalyzeError}</p>}
       </section>
 
       <section className="mb-8 grid gap-6 sm:grid-cols-2">
@@ -244,21 +290,33 @@ export default function ResultsPage() {
         ) : (
           <>
             <p className="mb-3 text-xs text-red-700">
-              These skills aren&apos;t in your resume at all — nothing was fabricated. Check any
-              you&apos;d like to add a project for; it'll appear in the tailored resume above.
+              None of these skills are in your resume — nothing was fabricated. These{" "}
+              {analysis.gap_flags.length} project{analysis.gap_flags.length > 1 ? "s" : ""}{" "}
+              together cover every missing skill above. Check any you plan to build; it&apos;ll
+              appear in the tailored resume above.
             </p>
-            <ul className="flex flex-col gap-3">
+            <ul className="flex flex-col gap-4">
               {analysis.gap_flags.map((g) => (
-                <li key={g.skill} className="flex gap-3 text-sm">
+                <li key={g.title} className="flex gap-3 text-sm">
                   <input
                     type="checkbox"
-                    checked={selectedGaps.has(g.skill)}
-                    onChange={() => toggleGap(g.skill)}
+                    checked={selectedGaps.has(g.title)}
+                    onChange={() => toggleGap(g.title)}
                     className="mt-1 h-4 w-4 flex-shrink-0"
                   />
                   <div>
-                    <p className="font-semibold text-red-900">{g.skill}</p>
-                    <p className="text-red-800">Suggested project: {g.suggested_project}</p>
+                    <p className="font-semibold text-red-900">{g.title}</p>
+                    <div className="my-1 flex flex-wrap gap-1">
+                      {g.covers_skills.map((skill) => (
+                        <span
+                          key={skill}
+                          className="rounded-full bg-red-200 px-2 py-0.5 text-xs text-red-900"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-red-800">{g.description}</p>
                     <p className="text-red-700">{g.why_valuable}</p>
                   </div>
                 </li>
@@ -280,6 +338,12 @@ export default function ResultsPage() {
           className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-900"
         >
           Download tailored resume (Word)
+        </button>
+        <button
+          onClick={handleDownloadLatex}
+          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-900"
+        >
+          Download tailored resume (LaTeX)
         </button>
       </section>
     </main>

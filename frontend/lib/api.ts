@@ -21,9 +21,10 @@ export interface TailoredBullet {
   tailored: string;
 }
 
-export interface GapFlag {
-  skill: string;
-  suggested_project: string;
+export interface ProjectSuggestion {
+  title: string;
+  covers_skills: string[];
+  description: string;
   why_valuable: string;
 }
 
@@ -45,7 +46,7 @@ export interface Analysis {
   matched_keywords: string[];
   missing_keywords: string[];
   tailored_bullets: TailoredBullet[];
-  gap_flags: GapFlag[];
+  gap_flags: ProjectSuggestion[];
   formatting_issues: string[];
   created_at: string;
 }

@@ -66,9 +66,10 @@ class TailoredBullet(BaseModel):
     tailored: str
 
 
-class GapFlag(BaseModel):
-    skill: str
-    suggested_project: str
+class ProjectSuggestion(BaseModel):
+    title: str
+    covers_skills: list[str]
+    description: str
     why_valuable: str
 
 
@@ -91,7 +92,7 @@ class AnalysisOut(BaseModel):
     matched_keywords: list[str]
     missing_keywords: list[str]
     tailored_bullets: list[TailoredBullet]
-    gap_flags: list[GapFlag]
+    gap_flags: list[ProjectSuggestion]
     formatting_issues: list[str]
     created_at: datetime
 

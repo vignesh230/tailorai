@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["analyze"])
 
 MAX_TAILORED_BULLETS = 6
-MAX_GAP_FLAGS = 5
 
 
 def extract_jd_keywords(jd_text: str) -> list[str]:
@@ -78,33 +77,52 @@ def generate_tailored_bullets(resume_text: str, groundable_keywords: list[str]) 
     ][:MAX_TAILORED_BULLETS]
 
 
+MAX_PROJECT_SUGGESTIONS = 3
+
+
 def generate_gap_flags(jd_text: str, gap_candidates: list[str]) -> list[dict]:
+    """Design a small number of consolidated portfolio projects that together cover as
+    many genuinely-missing JD skills as possible, rather than one throwaway project per
+    skill — a candidate can realistically only build 2-3 projects, so group related
+    skills (e.g. a frontend framework + backend framework + database + deployment
+    tooling) into the same project wherever that's a coherent, buildable thing."""
     if not gap_candidates:
         return []
-    candidates = gap_candidates[:MAX_GAP_FLAGS]
     messages = [
         {
             "role": "system",
             "content": (
-                "For each listed skill that is genuinely missing from a candidate's resume, "
-                "suggest ONE concrete, buildable sample/portfolio project that would best "
-                "demonstrate that skill, and a one-sentence reason it matters for this "
-                "specific job description. Respond with JSON only, no prose: "
-                '{"gaps": [{"skill": "...", "suggested_project": "...", "why_valuable": "..."}]}'
+                "Given a list of skills that are genuinely missing from a candidate's "
+                "resume for a specific job, design at most "
+                f"{MAX_PROJECT_SUGGESTIONS} concrete, buildable portfolio projects that "
+                "TOGETHER cover as many of the listed skills as possible. Group related "
+                "skills into the same project wherever it forms a coherent, realistic "
+                "build (e.g. one full-stack project can legitimately cover a frontend "
+                "framework, a backend framework, a database, and a deployment tool all "
+                "at once) — don't force unrelated skills together just to shorten the "
+                "list. Every skill in the input list should end up covered by at least "
+                "one project if at all feasible. Respond with JSON only, no prose: "
+                '{"projects": [{"title": "...", "covers_skills": ["..."], '
+                '"description": "<1-2 sentences on what to build>", '
+                '"why_valuable": "<1 sentence on why this matters for this job>"}]}'
             ),
         },
         {
             "role": "user",
-            "content": f"Job description:\n{jd_text}\n\nMissing skills: {candidates}",
+            "content": f"Job description:\n{jd_text}\n\nMissing skills: {gap_candidates}",
         },
     ]
     result = ai_client.chat_json(messages)
-    gaps = result.get("gaps", []) if isinstance(result, dict) else []
+    projects = result.get("projects", []) if isinstance(result, dict) else []
     return [
-        g
-        for g in gaps
-        if isinstance(g, dict) and g.get("skill") and g.get("suggested_project") and g.get("why_valuable")
-    ]
+        p
+        for p in projects
+        if isinstance(p, dict)
+        and p.get("title")
+        and p.get("covers_skills")
+        and p.get("description")
+        and p.get("why_valuable")
+    ][:MAX_PROJECT_SUGGESTIONS]
 
 
 @router.post("/analyze", response_model=AnalysisOut, status_code=status.HTTP_201_CREATED)
