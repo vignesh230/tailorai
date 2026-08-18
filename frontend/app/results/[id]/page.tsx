@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Analysis } from "@/lib/api";
@@ -24,6 +24,7 @@ export default function ResultsPage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<StoredAnalysis | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [selectedGaps, setSelectedGaps] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!loading && !user) {
@@ -58,14 +59,28 @@ export default function ResultsPage() {
   const { analysis, resumeText } = data;
   const { component_breakdown: cb } = analysis;
 
+  const selectedProjects = analysis.gap_flags.filter((g) => selectedGaps.has(g.skill));
+  const tailoredResumeText = useMemo(
+    () => buildTailoredResumeText(resumeText, analysis.tailored_bullets, selectedProjects),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [resumeText, analysis.tailored_bullets, selectedGaps]
+  );
+
+  function toggleGap(skill: string) {
+    setSelectedGaps((prev) => {
+      const next = new Set(prev);
+      if (next.has(skill)) next.delete(skill);
+      else next.add(skill);
+      return next;
+    });
+  }
+
   function handleDownloadPdf() {
-    const text = buildTailoredResumeText(resumeText, analysis.tailored_bullets);
-    downloadPdf("tailored-resume.pdf", text);
+    downloadPdf("tailored-resume.pdf", tailoredResumeText);
   }
 
   function handleDownloadWord() {
-    const text = buildTailoredResumeText(resumeText, analysis.tailored_bullets);
-    downloadWord("tailored-resume.doc", text);
+    downloadWord("tailored-resume.doc", tailoredResumeText);
   }
 
   return (
@@ -98,6 +113,29 @@ export default function ResultsPage() {
             <p className="text-lg font-semibold">{cb.formatting_score.toFixed(0)}</p>
           </div>
         </div>
+      </section>
+
+      <section className="mb-8 rounded-lg border border-slate-200 bg-white p-6">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Your tailored resume
+          </h2>
+          <div className="flex gap-3">
+            <button onClick={handleDownloadPdf} className="text-sm font-medium text-slate-900 underline">
+              Download PDF
+            </button>
+            <button onClick={handleDownloadWord} className="text-sm font-medium text-slate-900 underline">
+              Download Word
+            </button>
+          </div>
+        </div>
+        <p className="mb-3 text-xs text-slate-500">
+          Groundable bullets are already rewritten in place below. Check any suggested projects
+          further down the page to add them here too — nothing is added unless you pick it.
+        </p>
+        <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md bg-slate-50 p-4 font-mono text-xs">
+          {tailoredResumeText}
+        </pre>
       </section>
 
       <section className="mb-8 grid gap-6 sm:grid-cols-2">
@@ -168,7 +206,7 @@ export default function ResultsPage() {
       </section>
 
       <section className="mb-8 rounded-lg border border-red-200 bg-red-50 p-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-red-800">
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-red-800">
           Honest gaps — genuinely missing skills
         </h2>
         {analysis.gap_flags.length === 0 ? (
@@ -176,15 +214,29 @@ export default function ResultsPage() {
             No genuine skill gaps detected against this job description.
           </p>
         ) : (
-          <ul className="flex flex-col gap-4">
-            {analysis.gap_flags.map((g) => (
-              <li key={g.skill} className="text-sm">
-                <p className="font-semibold text-red-900">{g.skill}</p>
-                <p className="text-red-800">Suggested project: {g.suggested_project}</p>
-                <p className="text-red-700">{g.why_valuable}</p>
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="mb-3 text-xs text-red-700">
+              These skills aren&apos;t in your resume at all — nothing was fabricated. Check any
+              you&apos;d like to add a project for; it'll appear in the tailored resume above.
+            </p>
+            <ul className="flex flex-col gap-3">
+              {analysis.gap_flags.map((g) => (
+                <li key={g.skill} className="flex gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedGaps.has(g.skill)}
+                    onChange={() => toggleGap(g.skill)}
+                    className="mt-1 h-4 w-4 flex-shrink-0"
+                  />
+                  <div>
+                    <p className="font-semibold text-red-900">{g.skill}</p>
+                    <p className="text-red-800">Suggested project: {g.suggested_project}</p>
+                    <p className="text-red-700">{g.why_valuable}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </section>
 

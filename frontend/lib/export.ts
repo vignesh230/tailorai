@@ -1,9 +1,15 @@
-import { TailoredBullet } from "./api";
+import { GapFlag, TailoredBullet } from "./api";
 
 /** Substitute each tailored bullet back into the resume text (best-effort verbatim
- * match). Anything that can't be located verbatim is appended as a suggestions
- * section instead of being silently dropped. */
-export function buildTailoredResumeText(resumeText: string, bullets: TailoredBullet[]): string {
+ * match), and append any user-selected suggested projects as a new section.
+ * Bullets that can't be located verbatim are appended as a suggestions section
+ * instead of being silently dropped. Selecting projects is opt-in — nothing is
+ * added to the resume unless the caller explicitly passes it in. */
+export function buildTailoredResumeText(
+  resumeText: string,
+  bullets: TailoredBullet[],
+  selectedProjects: GapFlag[] = []
+): string {
   let text = resumeText;
   const unmatched: TailoredBullet[] = [];
 
@@ -19,6 +25,12 @@ export function buildTailoredResumeText(resumeText: string, bullets: TailoredBul
     text +=
       "\n\n--- Suggested additions (could not be placed automatically) ---\n" +
       unmatched.map((b) => `- ${b.tailored}`).join("\n");
+  }
+
+  if (selectedProjects.length > 0) {
+    text +=
+      "\n\nProjects to Add\n" +
+      selectedProjects.map((p) => `- ${p.skill}: ${p.suggested_project}`).join("\n");
   }
 
   return text;
