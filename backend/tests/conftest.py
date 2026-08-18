@@ -50,3 +50,40 @@ def auth_headers(client):
     )
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+def make_minimal_pdf(text: str) -> bytes:
+    """Hand-build a tiny single-page PDF with one text-drawing content stream, so
+    tests can exercise PDF parsing without a PDF-writing dependency."""
+    import io
+
+    content = f"BT /F1 12 Tf 20 100 Td ({text}) Tj ET".encode("latin-1")
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> "
+        b"/MediaBox [0 0 300 200] /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        f"<< /Length {len(content)} >>\nstream\n".encode("latin-1") + content + b"\nendstream",
+    ]
+
+    buf = io.BytesIO()
+    buf.write(b"%PDF-1.4\n")
+    offsets = [0]
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(buf.tell())
+        buf.write(f"{i} 0 obj\n".encode("latin-1"))
+        buf.write(obj)
+        buf.write(b"\nendobj\n")
+    xref_offset = buf.tell()
+    n = len(objects) + 1
+    buf.write(f"xref\n0 {n}\n".encode("latin-1"))
+    buf.write(b"0000000000 65535 f \n")
+    for off in offsets[1:]:
+        buf.write(f"{off:010d} 00000 n \n".encode("latin-1"))
+    buf.write(b"trailer\n")
+    buf.write(f"<< /Size {n} /Root 1 0 R >>\n".encode("latin-1"))
+    buf.write(b"startxref\n")
+    buf.write(f"{xref_offset}\n".encode("latin-1"))
+    buf.write(b"%%EOF")
+    return buf.getvalue()

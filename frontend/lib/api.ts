@@ -66,7 +66,7 @@ export function clearToken() {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers = new Headers(options.headers);
-  if (!(options.body instanceof URLSearchParams)) {
+  if (!(options.body instanceof URLSearchParams) && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -107,6 +107,12 @@ export async function listResumes(): Promise<Resume[]> {
 
 export async function createResume(title: string, raw_text: string): Promise<Resume> {
   return request("/resumes", { method: "POST", body: JSON.stringify({ title, raw_text }) });
+}
+
+export async function parseResumePdf(file: File): Promise<{ raw_text: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request("/resumes/parse-pdf", { method: "POST", body: formData });
 }
 
 export async function listJobDescriptions(): Promise<JobDescription[]> {

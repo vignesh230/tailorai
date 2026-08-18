@@ -30,6 +30,10 @@ class ResumeCreate(BaseModel):
     raw_text: str
 
 
+class ResumeParseOut(BaseModel):
+    raw_text: str
+
+
 class ResumeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
