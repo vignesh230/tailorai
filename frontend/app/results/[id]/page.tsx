@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Analysis } from "@/lib/api";
+import { Analysis, getAnalysis, getResume } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { buildTailoredResumeText, downloadPdf, downloadWord } from "@/lib/export";
+import { buildTailoredResumeText, downloadPdf, downloadWord, withProjectsBlock } from "@/lib/export";
 
 interface StoredAnalysis {
   analysis: Analysis;
@@ -25,31 +25,39 @@ export default function ResultsPage() {
   const [data, setData] = useState<StoredAnalysis | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [selectedGaps, setSelectedGaps] = useState<Set<string>>(new Set());
+  // The editable draft the user reviews and tweaks before downloading — this is
+  // the single source of truth for what actually gets exported.
+  const [resumeDraft, setResumeDraft] = useState("");
 
   useEffect(() => {
     if (!loading && !user) {
       router.replace("/login");
       return;
     }
+    if (loading) return;
+
+    function applyData(parsed: StoredAnalysis) {
+      setData(parsed);
+      setResumeDraft(buildTailoredResumeText(parsed.resumeText, parsed.analysis.tailored_bullets));
+    }
+
     const raw = sessionStorage.getItem(`tailorai_analysis_${params.id}`);
     if (raw) {
-      setData(JSON.parse(raw));
-    } else {
-      setNotFound(true);
+      applyData(JSON.parse(raw));
+      return;
     }
-  }, [loading, user, router, params.id]);
 
-  // Hooks must run unconditionally on every render, so these are computed here
-  // (with null-safe fallbacks) rather than after the early returns below.
-  const selectedProjects = useMemo(
-    () => (data ? data.analysis.gap_flags.filter((g) => selectedGaps.has(g.skill)) : []),
-    [data, selectedGaps]
-  );
-  const tailoredResumeText = useMemo(
-    () =>
-      data ? buildTailoredResumeText(data.resumeText, data.analysis.tailored_bullets, selectedProjects) : "",
-    [data, selectedProjects]
-  );
+    // Not in this tab's session (revisited later, opened in a new tab, or
+    // reached from the dashboard's analysis history) — fetch from the backend.
+    getAnalysis(params.id)
+      .then(async (analysis) => {
+        const resume = await getResume(analysis.resume_id);
+        const parsed = { analysis, resumeText: resume.raw_text };
+        sessionStorage.setItem(`tailorai_analysis_${params.id}`, JSON.stringify(parsed));
+        applyData(parsed);
+      })
+      .catch(() => setNotFound(true));
+  }, [loading, user, router, params.id]);
 
   if (loading || !user) return null;
 
@@ -57,7 +65,7 @@ export default function ResultsPage() {
     return (
       <main className="mx-auto max-w-xl px-4 py-10 text-center">
         <p className="mb-4 text-sm text-slate-500">
-          This result isn&apos;t available in this browser session anymore.
+          This analysis doesn&apos;t exist or doesn&apos;t belong to your account.
         </p>
         <Link href="/analyze" className="text-sm font-medium text-slate-900 underline">
           Start a new analysis
@@ -68,7 +76,7 @@ export default function ResultsPage() {
 
   if (!data) return null;
 
-  const { analysis } = data;
+  const { analysis, resumeText } = data;
   const { component_breakdown: cb } = analysis;
 
   function toggleGap(skill: string) {
@@ -76,16 +84,25 @@ export default function ResultsPage() {
       const next = new Set(prev);
       if (next.has(skill)) next.delete(skill);
       else next.add(skill);
+
+      const nextProjects = analysis.gap_flags.filter((g) => next.has(g.skill));
+      setResumeDraft((prevDraft) => withProjectsBlock(prevDraft, nextProjects));
+
       return next;
     });
   }
 
+  function resetDraft() {
+    const selectedProjects = analysis.gap_flags.filter((g) => selectedGaps.has(g.skill));
+    setResumeDraft(buildTailoredResumeText(resumeText, analysis.tailored_bullets, selectedProjects));
+  }
+
   function handleDownloadPdf() {
-    downloadPdf("tailored-resume.pdf", tailoredResumeText);
+    downloadPdf("tailored-resume.pdf", resumeDraft);
   }
 
   function handleDownloadWord() {
-    downloadWord("tailored-resume.doc", tailoredResumeText);
+    downloadWord("tailored-resume.doc", resumeDraft);
   }
 
   return (
@@ -126,6 +143,9 @@ export default function ResultsPage() {
             Your tailored resume
           </h2>
           <div className="flex gap-3">
+            <button onClick={resetDraft} className="text-sm text-slate-500 underline">
+              Reset to AI suggestion
+            </button>
             <button onClick={handleDownloadPdf} className="text-sm font-medium text-slate-900 underline">
               Download PDF
             </button>
@@ -135,12 +155,15 @@ export default function ResultsPage() {
           </div>
         </div>
         <p className="mb-3 text-xs text-slate-500">
-          Groundable bullets are already rewritten in place below. Check any suggested projects
-          further down the page to add them here too — nothing is added unless you pick it.
+          This is exactly what gets downloaded — edit it directly, or check suggested projects
+          below to add them here (nothing is added unless you pick it).
         </p>
-        <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md bg-slate-50 p-4 font-mono text-xs">
-          {tailoredResumeText}
-        </pre>
+        <textarea
+          value={resumeDraft}
+          onChange={(e) => setResumeDraft(e.target.value)}
+          rows={18}
+          className="w-full whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-4 font-mono text-xs"
+        />
       </section>
 
       <section className="mb-8 grid gap-6 sm:grid-cols-2">

@@ -94,3 +94,14 @@ class AnalysisOut(BaseModel):
     gap_flags: list[GapFlag]
     formatting_issues: list[str]
     created_at: datetime
+
+
+class AnalysisSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    resume_id: int
+    resume_title: str
+    jd_id: int
+    jd_title: str
+    ats_score: int
+    created_at: datetime

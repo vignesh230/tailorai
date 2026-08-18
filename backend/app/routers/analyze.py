@@ -9,7 +9,7 @@ from app import ai_client
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import Analysis, JobDescription, Resume, User
-from app.schemas import AnalyzeRequest, AnalysisOut
+from app.schemas import AnalyzeRequest, AnalysisOut, AnalysisSummary
 from app.scoring import score_resume
 
 logger = logging.getLogger(__name__)
@@ -160,4 +160,46 @@ def analyze(
     db.add(analysis)
     db.commit()
     db.refresh(analysis)
+    return analysis
+
+
+@router.get("/analyses", response_model=list[AnalysisSummary])
+def list_analyses(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    rows = (
+        db.query(Analysis, Resume.title, JobDescription.title)
+        .join(Resume, Analysis.resume_id == Resume.id)
+        .join(JobDescription, Analysis.jd_id == JobDescription.id)
+        .filter(Analysis.user_id == current_user.id)
+        .order_by(Analysis.created_at.desc())
+        .all()
+    )
+    return [
+        AnalysisSummary(
+            id=a.id,
+            resume_id=a.resume_id,
+            resume_title=resume_title,
+            jd_id=a.jd_id,
+            jd_title=jd_title,
+            ats_score=a.ats_score,
+            created_at=a.created_at,
+        )
+        for a, resume_title, jd_title in rows
+    ]
+
+
+@router.get("/analyses/{analysis_id}", response_model=AnalysisOut)
+def get_analysis(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    analysis = (
+        db.query(Analysis)
+        .filter(Analysis.id == analysis_id, Analysis.user_id == current_user.id)
+        .first()
+    )
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
     return analysis

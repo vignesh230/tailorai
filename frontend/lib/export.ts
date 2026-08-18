@@ -1,5 +1,7 @@
 import { GapFlag, TailoredBullet } from "./api";
 
+const PROJECTS_MARKER = "\n\nProjects to Add\n";
+
 /** Substitute each tailored bullet back into the resume text (best-effort verbatim
  * match), and append any user-selected suggested projects as a new section.
  * Bullets that can't be located verbatim are appended as a suggestions section
@@ -27,13 +29,20 @@ export function buildTailoredResumeText(
       unmatched.map((b) => `- ${b.tailored}`).join("\n");
   }
 
-  if (selectedProjects.length > 0) {
-    text +=
-      "\n\nProjects to Add\n" +
-      selectedProjects.map((p) => `- ${p.skill}: ${p.suggested_project}`).join("\n");
-  }
+  return withProjectsBlock(text, selectedProjects);
+}
 
-  return text;
+/** Replace the "Projects to Add" section of an (possibly hand-edited) resume
+ * draft with the current selection, leaving everything before it untouched.
+ * ponytail: a hand-edit that adds content *after* an existing Projects block
+ * gets cut when the block is next updated — acceptable for a single trailing
+ * section; upgrade to per-line diffing if that turns out to matter. */
+export function withProjectsBlock(text: string, projects: GapFlag[]): string {
+  const markerIndex = text.indexOf(PROJECTS_MARKER);
+  const base = markerIndex === -1 ? text : text.slice(0, markerIndex);
+  if (projects.length === 0) return base;
+  const block = projects.map((p) => `- ${p.skill}: ${p.suggested_project}`).join("\n");
+  return `${base}${PROJECTS_MARKER}${block}`;
 }
 
 export function downloadPdf(filename: string, text: string) {

@@ -166,3 +166,67 @@ def test_analyze_returns_502_when_ai_response_is_unparseable(client, auth_header
 
 def test_generate_gap_flags_empty_when_no_gap_candidates():
     assert analyze_router.generate_gap_flags(JD_TEXT, []) == []
+
+
+def test_list_analyses_returns_history_with_titles(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(ai_client, "chat_json", _fake_chat_json)
+    monkeypatch.setattr(ai_client, "embed", _fake_embed)
+
+    resume_id, jd_id = _setup_resume_and_jd(client, auth_headers)
+    client.post("/analyze", json={"resume_id": resume_id, "jd_id": jd_id}, headers=auth_headers)
+
+    resp = client.get("/analyses", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["resume_title"] == "My Resume"
+    assert body[0]["jd_title"] == "Backend Role"
+    assert "ats_score" in body[0]
+
+
+def test_list_analyses_requires_auth(client):
+    resp = client.get("/analyses")
+    assert resp.status_code == 401
+
+
+def test_list_analyses_scoped_to_current_user(client, monkeypatch):
+    monkeypatch.setattr(ai_client, "chat_json", _fake_chat_json)
+    monkeypatch.setattr(ai_client, "embed", _fake_embed)
+
+    client.post("/auth/signup", json={"email": "a@example.com", "password": "pw123456"})
+    token_a = client.post(
+        "/auth/login", data={"username": "a@example.com", "password": "pw123456"}
+    ).json()["access_token"]
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    resume_id, jd_id = _setup_resume_and_jd(client, headers_a)
+    client.post("/analyze", json={"resume_id": resume_id, "jd_id": jd_id}, headers=headers_a)
+
+    client.post("/auth/signup", json={"email": "b@example.com", "password": "pw123456"})
+    token_b = client.post(
+        "/auth/login", data={"username": "b@example.com", "password": "pw123456"}
+    ).json()["access_token"]
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    resp = client.get("/analyses", headers=headers_b)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_get_analysis_by_id(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(ai_client, "chat_json", _fake_chat_json)
+    monkeypatch.setattr(ai_client, "embed", _fake_embed)
+
+    resume_id, jd_id = _setup_resume_and_jd(client, auth_headers)
+    created = client.post(
+        "/analyze", json={"resume_id": resume_id, "jd_id": jd_id}, headers=auth_headers
+    ).json()
+
+    resp = client.get(f"/analyses/{created['id']}", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["id"] == created["id"]
+    assert resp.json()["tailored_bullets"] == created["tailored_bullets"]
+
+
+def test_get_analysis_404_for_missing_or_other_users(client, auth_headers):
+    resp = client.get("/analyses/9999", headers=auth_headers)
+    assert resp.status_code == 404

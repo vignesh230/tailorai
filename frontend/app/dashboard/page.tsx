@@ -3,14 +3,28 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { JobDescription, Resume, listJobDescriptions, listResumes } from "@/lib/api";
+import {
+  AnalysisSummary,
+  JobDescription,
+  Resume,
+  listAnalyses,
+  listJobDescriptions,
+  listResumes,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+
+function scoreColor(score: number) {
+  if (score >= 75) return "text-green-600";
+  if (score >= 50) return "text-amber-600";
+  return "text-red-600";
+}
 
 export default function DashboardPage() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [jds, setJds] = useState<JobDescription[]>([]);
+  const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
   const [loadingLists, setLoadingLists] = useState(true);
 
   useEffect(() => {
@@ -19,10 +33,11 @@ export default function DashboardPage() {
       router.replace("/login");
       return;
     }
-    Promise.all([listResumes(), listJobDescriptions()])
-      .then(([r, j]) => {
+    Promise.all([listResumes(), listJobDescriptions(), listAnalyses()])
+      .then(([r, j, a]) => {
         setResumes(r);
         setJds(j);
+        setAnalyses(a);
       })
       .finally(() => setLoadingLists(false));
   }, [loading, user, router]);
@@ -51,6 +66,37 @@ export default function DashboardPage() {
       {loadingLists ? (
         <p className="text-sm text-slate-500">Loading...</p>
       ) : (
+        <>
+        <section className="mb-10">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Past analyses
+          </h2>
+          {analyses.length === 0 ? (
+            <p className="text-sm text-slate-400">No analyses yet — run one above.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {analyses.map((a) => (
+                <li key={a.id}>
+                  <Link
+                    href={`/results/${a.id}`}
+                    className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-3 hover:border-slate-300"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">
+                        {a.resume_title} <span className="text-slate-400">vs</span> {a.jd_title}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {new Date(a.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <p className={`text-lg font-bold ${scoreColor(a.ats_score)}`}>{a.ats_score}</p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         <div className="grid gap-8 sm:grid-cols-2">
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -90,6 +136,7 @@ export default function DashboardPage() {
             </ul>
           </section>
         </div>
+        </>
       )}
     </main>
   );

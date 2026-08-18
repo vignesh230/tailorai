@@ -50,6 +50,16 @@ export interface Analysis {
   created_at: string;
 }
 
+export interface AnalysisSummary {
+  id: number;
+  resume_id: number;
+  resume_title: string;
+  jd_id: number;
+  jd_title: string;
+  ats_score: number;
+  created_at: string;
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
@@ -125,4 +135,16 @@ export async function createJobDescription(title: string, raw_text: string): Pro
 
 export async function analyze(resume_id: number, jd_id: number): Promise<Analysis> {
   return request("/analyze", { method: "POST", body: JSON.stringify({ resume_id, jd_id }) });
+}
+
+export async function listAnalyses(): Promise<AnalysisSummary[]> {
+  return request("/analyses");
+}
+
+export async function getAnalysis(id: number | string): Promise<Analysis> {
+  return request(`/analyses/${id}`);
+}
+
+export async function getResume(id: number): Promise<Resume> {
+  return request(`/resumes/${id}`);
 }
