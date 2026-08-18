@@ -66,6 +66,7 @@ class Analysis(Base):
     tailored_bullets: Mapped[list] = mapped_column(JSONB, nullable=False)
     gap_flags: Mapped[list] = mapped_column(JSONB, nullable=False)
     formatting_issues: Mapped[list] = mapped_column(JSONB, nullable=False)
+    screening: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

@@ -143,12 +143,36 @@ export default function ResultsPage() {
         </Link>
       </div>
 
+      {analysis.screening.verdict === "SKIP" && (
+        <section className="mb-8 rounded-lg border border-amber-300 bg-amber-50 p-6">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-amber-900">
+            Possible dealbreaker before you spend time tailoring
+          </h2>
+          <p className="text-sm text-amber-900">{analysis.screening.skip_reason}</p>
+          <p className="mt-2 border-l-2 border-amber-400 pl-3 text-sm italic text-amber-800">
+            &ldquo;{analysis.screening.skip_quote}&rdquo;
+          </p>
+          <p className="mt-2 text-xs text-amber-700">
+            Quoted directly from the job description below — the results below still work if
+            you want to tailor anyway.
+          </p>
+        </section>
+      )}
+
       <section className="mb-8 rounded-lg border border-slate-200 bg-white p-6">
-        <p className="text-sm text-slate-500">ATS Score</p>
-        <p className={`text-5xl font-bold ${scoreColor(analysis.ats_score)}`}>
-          {analysis.ats_score}
-          <span className="text-xl text-slate-400">/100</span>
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm text-slate-500">ATS Score</p>
+            <p className={`text-5xl font-bold ${scoreColor(analysis.ats_score)}`}>
+              {analysis.ats_score}
+              <span className="text-xl text-slate-400">/100</span>
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+            {analysis.screening.fit_verdict}
+          </span>
+        </div>
+        <p className="mt-3 text-sm text-slate-600">{analysis.screening.recruiter_note}</p>
 
         <div className="mt-6 grid grid-cols-3 gap-4 text-sm">
           <div>

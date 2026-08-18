@@ -82,6 +82,14 @@ class ComponentBreakdown(BaseModel):
     formatting_weight: float
 
 
+class Screening(BaseModel):
+    verdict: str  # "PASS" or "SKIP"
+    skip_reason: str | None = None
+    skip_quote: str | None = None
+    fit_verdict: str  # "STRONG MATCH" | "SOLID MATCH" | "REACH" | "WEAK MATCH"
+    recruiter_note: str
+
+
 class AnalysisOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -94,6 +102,7 @@ class AnalysisOut(BaseModel):
     tailored_bullets: list[TailoredBullet]
     gap_flags: list[ProjectSuggestion]
     formatting_issues: list[str]
+    screening: Screening
     created_at: datetime
 
 

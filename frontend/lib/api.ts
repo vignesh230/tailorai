@@ -37,6 +37,14 @@ export interface ComponentBreakdown {
   formatting_weight: number;
 }
 
+export interface Screening {
+  verdict: "PASS" | "SKIP";
+  skip_reason: string | null;
+  skip_quote: string | null;
+  fit_verdict: "STRONG MATCH" | "SOLID MATCH" | "REACH" | "WEAK MATCH";
+  recruiter_note: string;
+}
+
 export interface Analysis {
   id: number;
   resume_id: number;
@@ -48,6 +56,7 @@ export interface Analysis {
   tailored_bullets: TailoredBullet[];
   gap_flags: ProjectSuggestion[];
   formatting_issues: string[];
+  screening: Screening;
   created_at: string;
 }
 

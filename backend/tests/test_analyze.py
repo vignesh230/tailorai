@@ -43,6 +43,8 @@ def _fake_chat_json(messages, *args, **kwargs):
                 }
             ]
         }
+    if "Screen whether a candidate" in system_content:
+        return {"verdict": "PASS", "skip_reason": None, "skip_quote": None}
     raise AssertionError(f"unexpected prompt: {system_content}")
 
 
@@ -93,6 +95,10 @@ def test_analyze_full_flow_with_mocked_nim(client, auth_headers, monkeypatch):
     assert "Kubernetes" in body["gap_flags"][0]["covers_skills"]
     assert len(body["gap_flags"][0]["bullets"]) > 0
     assert "Kubernetes" not in body["matched_keywords"]
+
+    assert body["screening"]["verdict"] == "PASS"
+    assert body["screening"]["fit_verdict"] in {"STRONG MATCH", "SOLID MATCH", "REACH", "WEAK MATCH"}
+    assert "Python" in body["screening"]["recruiter_note"]
 
 
 def test_analyze_requires_auth(client):
@@ -375,3 +381,83 @@ def test_generate_summary_tailoring_drops_unchanged_output(monkeypatch):
     original = analyze_router._extract_summary_paragraph(RESUME_WITH_SUMMARY)
     monkeypatch.setattr(ai_client, "chat_json", lambda *a, **kw: {"tailored_summary": original})
     assert analyze_router.generate_summary_tailoring(RESUME_WITH_SUMMARY, JD_TEXT) == []
+
+
+def test_strip_em_dashes():
+    assert analyze_router._strip_em_dashes("Built X — reducing Y") == "Built X  -  reducing Y"
+    assert analyze_router._strip_em_dashes("Aug 2024 - May 2026") == "Aug 2024 - May 2026"
+
+
+def test_find_verbatim_line_exact_match():
+    text = "Experience\n- Built REST APIs\n"
+    assert analyze_router._find_verbatim_line("- Built REST APIs", text) == "- Built REST APIs"
+
+
+def test_find_verbatim_line_tolerates_whitespace_and_glyph_differences():
+    """Regression: the model's copy of a bullet is often not byte-identical (a
+    different bullet glyph, doubled spaces, smart quotes) even when it's
+    genuinely the same line. The old exact-substring check falsely rejected
+    these; the normalized match should accept them while still returning the
+    real verbatim resume text."""
+    text = "Experience\n•  Built  REST APIs   in Python\n"
+    found = analyze_router._find_verbatim_line("- Built REST APIs in Python", text)
+    assert found == "•  Built  REST APIs   in Python"  # real text, not the model's copy
+
+
+def test_find_verbatim_line_rejects_fabricated_text():
+    text = "Experience\n- Built REST APIs\n"
+    assert analyze_router._find_verbatim_line("- Led a team of 50 engineers", text) is None
+
+
+def test_compute_fit_verdict_bands():
+    assert analyze_router.compute_fit_verdict(90) == "STRONG MATCH"
+    assert analyze_router.compute_fit_verdict(70) == "SOLID MATCH"
+    assert analyze_router.compute_fit_verdict(50) == "REACH"
+    assert analyze_router.compute_fit_verdict(10) == "WEAK MATCH"
+
+
+def test_build_recruiter_note_mentions_both_sides():
+    note = analyze_router.build_recruiter_note(["Python", "SQL"], ["Kubernetes"])
+    assert "Python" in note
+    assert "Kubernetes" in note
+
+
+def test_screen_jd_passes_when_verdict_pass(monkeypatch):
+    monkeypatch.setattr(
+        ai_client, "chat_json", lambda *a, **kw: {"verdict": "PASS", "skip_reason": None, "skip_quote": None}
+    )
+    result = analyze_router.screen_jd(RESUME_TEXT, JD_TEXT)
+    assert result == {"verdict": "PASS", "skip_reason": None, "skip_quote": None}
+
+
+def test_screen_jd_skip_with_grounded_quote(monkeypatch):
+    jd = "We are unable to sponsor visas now or in the future. Must have Python experience."
+    monkeypatch.setattr(
+        ai_client,
+        "chat_json",
+        lambda *a, **kw: {
+            "verdict": "SKIP",
+            "skip_reason": "No visa sponsorship offered.",
+            "skip_quote": "We are unable to sponsor visas now or in the future.",
+        },
+    )
+    result = analyze_router.screen_jd(RESUME_TEXT, jd)
+    assert result["verdict"] == "SKIP"
+    assert result["skip_quote"] in jd
+
+
+def test_screen_jd_rejects_skip_without_grounded_quote(monkeypatch):
+    """Regression: a SKIP claim whose 'quote' doesn't actually appear in the JD
+    text (the model inventing or paraphrasing a quote) must not be trusted —
+    same grounding-by-verification principle as everywhere else in this app."""
+    monkeypatch.setattr(
+        ai_client,
+        "chat_json",
+        lambda *a, **kw: {
+            "verdict": "SKIP",
+            "skip_reason": "Sounds risky",
+            "skip_quote": "This sentence does not appear in the job description at all.",
+        },
+    )
+    result = analyze_router.screen_jd(RESUME_TEXT, JD_TEXT)
+    assert result == {"verdict": "PASS", "skip_reason": None, "skip_quote": None}

@@ -28,6 +28,44 @@ MAX_KEYWORDS = 25
 MAX_JD_CHARS = 6000
 MAX_RESUME_CHARS = 6000
 
+_BULLET_GLYPH_RE = re.compile(r"^[\s•\-–*]+")
+_WHITESPACE_RE = re.compile(r"\s+")
+_QUOTE_TRANSLATION = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
+
+
+def _normalize_for_grounding(text: str) -> str:
+    """Collapse whitespace, strip leading bullet glyphs, and unify quote styles so a
+    truthful rewrite isn't falsely rejected over cosmetic formatting differences."""
+    text = text.translate(_QUOTE_TRANSLATION)
+    text = _BULLET_GLYPH_RE.sub("", text)
+    text = _WHITESPACE_RE.sub(" ", text).strip()
+    return text.casefold()
+
+
+def _find_verbatim_line(candidate: str, resume_text: str) -> str | None:
+    """Check whether `candidate` genuinely appears in resume_text, tolerant of
+    whitespace/bullet-glyph/quote differences — but always return the actual
+    verbatim resume text (never the model's copy), so the exact-substring
+    substitution used for export still works."""
+    if not candidate:
+        return None
+    if candidate in resume_text:
+        return candidate
+    normalized_candidate = _normalize_for_grounding(candidate)
+    if not normalized_candidate:
+        return None
+    for line in resume_text.split("\n"):
+        if _normalize_for_grounding(line) == normalized_candidate:
+            return line
+    return None
+
+
+def _strip_em_dashes(text: str) -> str:
+    """Em dashes are a common tell of AI-generated resume text and some ATS
+    parsers mangle them — replace with a plain hyphen. En dashes (used
+    legitimately in date ranges like 'Aug 2024 - May 2026') are left alone."""
+    return text.replace("—", " - ")
+
 
 def extract_jd_keywords(jd_text: str) -> list[str]:
     messages = [
@@ -68,7 +106,7 @@ def generate_tailored_bullets(resume_text: str, groundable_keywords: list[str]) 
                 '"tailored": "<rewritten line>"}]}. '
                 f"Include at most {MAX_TAILORED_BULLETS} bullets. If a keyword cannot be "
                 "naturally grounded in any existing bullet, omit it entirely — never invent "
-                "new experience, employers, tools, or metrics."
+                "new experience, employers, tools, or metrics. Do not use em dashes."
             ),
         },
         {
@@ -81,15 +119,21 @@ def generate_tailored_bullets(resume_text: str, groundable_keywords: list[str]) 
     ]
     result = ai_client.chat_json(messages)
     bullets = result.get("bullets", []) if isinstance(result, dict) else []
-    return [
-        b
-        for b in bullets
-        if isinstance(b, dict)
-        and b.get("original")
-        and b.get("tailored")
-        and b["original"] != b["tailored"]
-        and b["original"] in resume_text  # enforce real grounding, not just non-empty
-    ][:MAX_TAILORED_BULLETS]
+    grounded: list[dict] = []
+    for b in bullets:
+        if not isinstance(b, dict) or not b.get("original") or not b.get("tailored"):
+            continue
+        verbatim = _find_verbatim_line(b["original"], resume_text)
+        if not verbatim or verbatim == b["tailored"]:
+            continue
+        grounded.append(
+            {
+                "section": b.get("section") or "Experience",
+                "original": verbatim,  # always the real resume text, never the model's copy
+                "tailored": _strip_em_dashes(b["tailored"]),
+            }
+        )
+    return grounded[:MAX_TAILORED_BULLETS]
 
 
 _SUMMARY_HEADING_RE = re.compile(r"^\s*(summary|objective|profile)\s*$", re.IGNORECASE)
@@ -143,7 +187,7 @@ def generate_summary_tailoring(resume_text: str, jd_text: str) -> list[dict]:
                 "resume. Do NOT add any skill, credential, employer, or experience "
                 "that isn't already present on the resume — only reframe and "
                 "re-emphasize what's genuinely there, and keep it roughly the same "
-                "length as the original. Respond with JSON only, no prose: "
+                "length as the original. Do not use em dashes. Respond with JSON only, no prose: "
                 '{"tailored_summary": "<rewritten paragraph>"}'
             ),
         },
@@ -159,9 +203,12 @@ def generate_summary_tailoring(resume_text: str, jd_text: str) -> list[dict]:
     ]
     result = ai_client.chat_json(messages)
     tailored = result.get("tailored_summary") if isinstance(result, dict) else None
-    if not isinstance(tailored, str) or not tailored.strip() or tailored.strip() == original_summary:
+    if not isinstance(tailored, str) or not tailored.strip():
         return []
-    return [{"section": "Summary", "original": original_summary, "tailored": tailored.strip()}]
+    tailored_clean = _strip_em_dashes(tailored.strip())
+    if tailored_clean == original_summary:
+        return []
+    return [{"section": "Summary", "original": original_summary, "tailored": tailored_clean}]
 
 
 MAX_PROJECT_SUGGESTIONS = 3
@@ -198,7 +245,7 @@ def generate_gap_flags(jd_text: str, gap_candidates: list[str]) -> list[dict]:
                 "counts, [X]% for percentages, [Y] for other measurements — so the "
                 "candidate fills in their own real result once they build and measure it "
                 "(e.g. 'automating [N]+ validation scenarios, reducing manual effort by "
-                "[X]%'). Respond with JSON only, no prose: "
+                "[X]%'). Do not use em dashes. Respond with JSON only, no prose: "
                 '{"projects": [{"title": "...", "covers_skills": ["..."], '
                 '"bullets": ["<bullet with [N]/[X] placeholders where a real project would have metrics>", "..."], '
                 '"why_valuable": "<1 sentence on why this matters for this job>"}]}'
@@ -211,16 +258,98 @@ def generate_gap_flags(jd_text: str, gap_candidates: list[str]) -> list[dict]:
     ]
     result = ai_client.chat_json(messages)
     projects = result.get("projects", []) if isinstance(result, dict) else []
-    return [
-        p
-        for p in projects
-        if isinstance(p, dict)
-        and p.get("title")
-        and p.get("covers_skills")
-        and isinstance(p.get("bullets"), list)
-        and len(p["bullets"]) > 0
-        and p.get("why_valuable")
-    ][:MAX_PROJECT_SUGGESTIONS]
+    cleaned: list[dict] = []
+    for p in projects:
+        if (
+            not isinstance(p, dict)
+            or not p.get("title")
+            or not p.get("covers_skills")
+            or not isinstance(p.get("bullets"), list)
+            or len(p["bullets"]) == 0
+            or not p.get("why_valuable")
+        ):
+            continue
+        cleaned.append(
+            {
+                "title": _strip_em_dashes(p["title"]),
+                "covers_skills": p["covers_skills"],
+                "bullets": [_strip_em_dashes(b) for b in p["bullets"] if isinstance(b, str)],
+                "why_valuable": _strip_em_dashes(p["why_valuable"]),
+            }
+        )
+    return cleaned[:MAX_PROJECT_SUGGESTIONS]
+
+
+def screen_jd(resume_text: str, jd_text: str) -> dict:
+    """Pre-tailoring dealbreaker screen: SKIP is only ever returned with a quoted
+    JD sentence that genuinely appears in the JD text — a model claim of SKIP
+    without real quoted evidence is dropped back to PASS rather than trusted,
+    same grounding-by-verification approach used everywhere else in this app."""
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Screen whether a candidate should bother tailoring their resume for "
+                "this job. Flag SKIP ONLY when you can quote the EXACT triggering "
+                "sentence from the job description, for one of: no sponsorship now or "
+                "in the future / must not require sponsorship / unrestricted work "
+                "authorization required; security clearance, US citizenship, or "
+                "ITAR/US-persons-only requirement; intern/co-op or 'currently "
+                "enrolled/pursuing degree' only; a hard REQUIRED (not preferred) "
+                "years-of-experience minimum clearly above what the resume shows; a "
+                "PERM-style listing ('Employer will accept... Position requires: "
+                "<long tech list>'); or the role's CORE discipline being something "
+                "the candidate has no real background in (e.g. low-level/embedded/"
+                "kernel/compiler/HPC/FPGA work for a candidate with no such "
+                "experience). A missing PREFERRED skill is a gap, not a dealbreaker — "
+                "never flag SKIP for that alone. If nothing disqualifying is "
+                "quotable, verdict is PASS. Respond with JSON only, no prose: "
+                '{"verdict": "PASS" or "SKIP", "skip_reason": "<one sentence, or '
+                'null>", "skip_quote": "<exact quoted JD sentence, or null>"}'
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Resume:\n{resume_text[:MAX_RESUME_CHARS]}\n\n"
+                f"Job description:\n{jd_text[:MAX_JD_CHARS]}"
+            ),
+        },
+    ]
+    result = ai_client.chat_json(messages)
+    if not isinstance(result, dict) or result.get("verdict") != "SKIP":
+        return {"verdict": "PASS", "skip_reason": None, "skip_quote": None}
+
+    quote = result.get("skip_quote")
+    if not isinstance(quote, str) or not quote.strip() or quote.strip() not in jd_text:
+        return {"verdict": "PASS", "skip_reason": None, "skip_quote": None}
+
+    reason = result.get("skip_reason")
+    return {
+        "verdict": "SKIP",
+        "skip_reason": _strip_em_dashes(reason) if isinstance(reason, str) else None,
+        "skip_quote": quote.strip(),
+    }
+
+
+def compute_fit_verdict(ats_score: int) -> str:
+    """Cheap, deterministic categorical read of the numeric score — no extra AI
+    call needed since it's a direct function of ats_score's existing bands."""
+    if ats_score >= 85:
+        return "STRONG MATCH"
+    if ats_score >= 65:
+        return "SOLID MATCH"
+    if ats_score >= 40:
+        return "REACH"
+    return "WEAK MATCH"
+
+
+def build_recruiter_note(matched_keywords: list[str], gap_candidates: list[str]) -> str:
+    """One-line matched-vs-missing summary, built deterministically from data the
+    scoring step already produced — no extra AI call."""
+    matched_part = ", ".join(matched_keywords[:6]) if matched_keywords else "none yet"
+    missing_part = ", ".join(gap_candidates[:6]) if gap_candidates else "none"
+    return f"Keywords matched: {matched_part}. Still genuinely missing: {missing_part}."
 
 
 @router.post("/analyze", response_model=AnalysisOut, status_code=status.HTTP_201_CREATED)
@@ -256,12 +385,19 @@ def analyze(
             resume.raw_text, groundable_keywords
         ) + generate_summary_tailoring(resume.raw_text, jd.raw_text)
         gap_flags = generate_gap_flags(jd.raw_text, result["gap_candidates"])
+        screen_result = screen_jd(resume.raw_text, jd.raw_text)
     except (json.JSONDecodeError, OpenAIError) as exc:
         logger.exception("AI analysis step failed for resume_id=%s jd_id=%s", resume.id, jd.id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="The AI analysis step failed (NIM returned an unusable response). Please try again.",
         ) from exc
+
+    screening = {
+        **screen_result,
+        "fit_verdict": compute_fit_verdict(result["ats_score"]),
+        "recruiter_note": build_recruiter_note(result["matched_keywords"], result["gap_candidates"]),
+    }
 
     analysis = Analysis(
         user_id=current_user.id,
@@ -274,6 +410,7 @@ def analyze(
         tailored_bullets=tailored_bullets,
         gap_flags=gap_flags,
         formatting_issues=result["formatting_issues"],
+        screening=screening,
     )
     db.add(analysis)
     db.commit()
