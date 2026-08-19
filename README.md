@@ -64,7 +64,7 @@ frontend (Next.js App Router)  --->  backend (FastAPI)  --->  Postgres
 
 | Component | Weight | What it measures |
 |---|---|---|
-| **Keyword coverage** | 0.5 | NIM extracts required skills/keywords from the JD as JSON. Each keyword is checked against the resume as a bag of stemmed words (handles simple plurals/suffixes; multi-word keywords require every word to appear, order-independent). This is the most literal, ATS-like signal, so it carries the most weight. |
+| **Keyword coverage** | 0.5 | NIM extracts required skills/keywords from the JD as JSON. Single-word keywords match by stemmed-token membership anywhere in the resume (handles simple plurals/suffixes). Multi-word keywords require the stemmed phrase to appear as a *contiguous* sequence in the resume — scattered-but-present words don't count, since that over-matched phrases like "REST API testing" against a resume that merely mentioned REST, API, and testing in unrelated lines. This is the most literal, ATS-like signal, so it carries the most weight. |
 | **Semantic coverage** | 0.35 | For every keyword that failed the hard match, embed it and every resume line (NIM embeddings) and take the best cosine similarity. The average of those best-matches is the semantic score. A similarity ≥ 0.72 counts as "covered" (paraphrase-level); below that, the keyword becomes a genuine gap candidate. |
 | **Formatting / parse-safety** | 0.15 | Pure heuristics, no NIM call: missing standard section headings (Experience/Education/Skills), multi-space/tab column-like spacing (table risk), non-standard bullet glyphs, extremely long unbroken lines, or too few line breaks overall. Starts at 100, loses points per flag. |
 
@@ -74,6 +74,25 @@ semantic threshold — i.e., skills genuinely absent from the resume, each
 paired with an AI-suggested sample project and a one-line reason it matters
 for that specific job description. Everything else missing-but-semantically-
 present becomes a candidate for a tailored bullet rewrite instead.
+
+## Calibration
+
+The 0.5/0.35/0.15 weights and the 0.72 semantic-match threshold are presented
+as calibrated, not guessed. `backend/eval/` holds the method: a 12-entry
+synthetic labeled dataset (`labeled_pairs.json`, resume/JD pairs across 4
+roles each labeled "strong"/"medium"/"poor") and a script
+(`calibrate.py`) that runs the real `score_resume()` over it with a
+deterministic offline stand-in for the embedding call, and reports whether
+`ats_score` rank-orders the labels correctly.
+
+```bash
+cd backend
+python -m eval.calibrate
+```
+
+Last run: **100% pairwise ordering accuracy** and a **0.96 Spearman
+correlation** between `ats_score` and label. See `backend/eval/README.md` for
+the full method and why the dataset is explicitly synthetic.
 
 ## Quickstart
 
@@ -124,3 +143,18 @@ env — defaults are `meta/llama-3.1-8b-instruct` and
 call — under NIM's free tier during testing, and `/analyze` makes up to three
 sequential chat calls; the 8B default keeps the full analyze loop to roughly
 15–20 seconds.)
+
+`ENVIRONMENT` (default `development`) gates the JWT secret check below — it
+does not change any other app behavior.
+
+## Security
+
+- **JWT secret enforcement** — the app boots with a default `JWT_SECRET` in
+  development so it works out of the box, but refuses to start with that
+  default (or anything under 32 bytes) when `ENVIRONMENT` is set to anything
+  other than `development`. Set a real `JWT_SECRET` before deploying anywhere
+  that isn't local development.
+- **Rate limiting** — `POST /analyze` is limited to 10 requests per minute,
+  keyed by the authenticated user (falling back to client IP for
+  unauthenticated requests), since each call makes several paid NIM requests.
+  Exceeding it returns `429` with a JSON `detail` message.

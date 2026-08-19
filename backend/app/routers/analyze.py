@@ -2,7 +2,7 @@ import json
 import logging
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from openai import OpenAIError
 from sqlalchemy.orm import Session
 
@@ -10,8 +10,11 @@ from app import ai_client
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import Analysis, JobDescription, Resume, User
+from app.rate_limit import limiter
 from app.schemas import AnalyzeRequest, AnalysisOut, AnalysisSummary
 from app.scoring import score_resume
+
+ANALYZE_RATE_LIMIT = "10/minute"
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["analyze"])
@@ -362,7 +365,9 @@ def build_recruiter_note(matched_keywords: list[str], gap_candidates: list[str])
 
 
 @router.post("/analyze", response_model=AnalysisOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit(ANALYZE_RATE_LIMIT)
 def analyze(
+    request: Request,
     payload: AnalyzeRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

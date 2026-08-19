@@ -6,8 +6,20 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
+from app.rate_limit import limiter
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """The rate limiter is a process-wide singleton, so without a reset its
+    counters would accumulate across every test that hits POST /analyze,
+    eventually tripping 429s in tests that have nothing to do with rate
+    limiting."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture()

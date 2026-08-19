@@ -1,0 +1,89 @@
+{
+  "_note": "SYNTHETIC calibration dataset for TailorAI's ATS scoring formula. Every name, company, and resume/JD line below is fabricated for testing purposes only. None of this represents a real applicant, employer, or job posting -- do not treat it as real applicant data.",
+  "pairs": [
+    {
+      "id": "backend-strong",
+      "label": "strong",
+      "jd_keywords": ["Python", "FastAPI", "PostgreSQL", "Docker", "REST API", "unit testing", "Git", "CI/CD"],
+      "jd": "Backend Engineer at Example Corp. Build and maintain REST API services in Python using FastAPI. Work with PostgreSQL for data storage, containerize services with Docker, and maintain unit testing coverage. Familiarity with Git and CI/CD pipelines expected.",
+      "resume": "Experience\n- Built REST API services in Python using FastAPI for an internal billing platform\n- Deployed services with Docker and wrote PostgreSQL migrations\n- Maintained unit testing suites and set up CI/CD pipelines with Git\n\nEducation\nBS in Computer Science\n\nSkills\nPython, FastAPI, PostgreSQL, Docker, Git"
+    },
+    {
+      "id": "backend-medium",
+      "label": "medium",
+      "jd_keywords": ["Python", "FastAPI", "PostgreSQL", "Docker", "REST API", "unit testing", "Git", "CI/CD"],
+      "jd": "Backend Engineer at Example Corp. Build and maintain REST API services in Python using FastAPI. Work with PostgreSQL for data storage, containerize services with Docker, and maintain unit testing coverage. Familiarity with Git and CI/CD pipelines expected.",
+      "resume": "Experience\n- Built REST API services in Python for an internal reporting tool\n- Used Git for version control on a small team project\n- Wrote unit tests for a Python data processing script\n\nEducation\nBS in Computer Science\n\nSkills\nPython, SQL, Git"
+    },
+    {
+      "id": "backend-poor",
+      "label": "poor",
+      "jd_keywords": ["Python", "FastAPI", "PostgreSQL", "Docker", "REST API", "unit testing", "Git", "CI/CD"],
+      "jd": "Backend Engineer at Example Corp. Build and maintain REST API services in Python using FastAPI. Work with PostgreSQL for data storage, containerize services with Docker, and maintain unit testing coverage. Familiarity with Git and CI/CD pipelines expected.",
+      "resume": "Experience\n- Managed social media campaigns for a retail brand\n- Created marketing content calendars and tracked engagement metrics\n- Coordinated with vendors on promotional events\n\nEducation\nBA in Marketing\n\nSkills\nSocial media marketing, content strategy, event planning"
+    },
+    {
+      "id": "frontend-strong",
+      "label": "strong",
+      "jd_keywords": ["React", "TypeScript", "JavaScript", "CSS", "component library", "accessibility", "Jest", "responsive design"],
+      "jd": "Frontend Engineer at Sample Startup Inc. Build user interfaces in React with TypeScript. Maintain a shared component library, write CSS for responsive design, ensure accessibility compliance, and write tests with Jest.",
+      "resume": "Experience\n- Built user interfaces in React with TypeScript for a customer dashboard\n- Maintained a shared component library used across three products\n- Wrote CSS for responsive design and Jest tests for UI components\n- Improved accessibility compliance across the design system\n\nEducation\nBS in Computer Science\n\nSkills\nReact, TypeScript, JavaScript, CSS, Jest"
+    },
+    {
+      "id": "frontend-medium",
+      "label": "medium",
+      "jd_keywords": ["React", "TypeScript", "JavaScript", "CSS", "component library", "accessibility", "Jest", "responsive design"],
+      "jd": "Frontend Engineer at Sample Startup Inc. Build user interfaces in React with TypeScript. Maintain a shared component library, write CSS for responsive design, ensure accessibility compliance, and write tests with Jest.",
+      "resume": "Experience\n- Built user interfaces in React for a small internal tool\n- Wrote CSS for a marketing landing page\n- Fixed bugs in an existing JavaScript codebase\n\nEducation\nBS in Information Technology\n\nSkills\nReact, JavaScript, CSS, HTML"
+    },
+    {
+      "id": "frontend-poor",
+      "label": "poor",
+      "jd_keywords": ["React", "TypeScript", "JavaScript", "CSS", "component library", "accessibility", "Jest", "responsive design"],
+      "jd": "Frontend Engineer at Sample Startup Inc. Build user interfaces in React with TypeScript. Maintain a shared component library, write CSS for responsive design, ensure accessibility compliance, and write tests with Jest.",
+      "resume": "Experience\n- Performed quarterly financial audits for small business clients\n- Prepared tax filings and reconciled ledgers\n- Advised clients on budgeting and expense tracking\n\nEducation\nBS in Accounting\n\nSkills\nFinancial auditing, tax preparation, bookkeeping"
+    },
+    {
+      "id": "datasci-strong",
+      "label": "strong",
+      "jd_keywords": ["Python", "machine learning", "scikit-learn", "pandas", "SQL", "model evaluation", "data visualization", "A/B testing"],
+      "jd": "Data Scientist at Example Corp. Build machine learning models in Python using scikit-learn and pandas for feature engineering. Query production data with SQL, evaluate models rigorously, create data visualizations, and design A/B tests.",
+      "resume": "Experience\n- Built machine learning models in Python using scikit-learn for a churn prediction project\n- Used pandas for feature engineering and SQL to query production data\n- Ran model evaluation with cross-validation and designed A/B tests for feature rollouts\n- Created data visualization dashboards for stakeholders\n\nEducation\nMS in Data Science\n\nSkills\nPython, scikit-learn, pandas, SQL, data visualization"
+    },
+    {
+      "id": "datasci-medium",
+      "label": "medium",
+      "jd_keywords": ["Python", "machine learning", "scikit-learn", "pandas", "SQL", "model evaluation", "data visualization", "A/B testing"],
+      "jd": "Data Scientist at Example Corp. Build machine learning models in Python using scikit-learn and pandas for feature engineering. Query production data with SQL, evaluate models rigorously, create data visualizations, and design A/B tests.",
+      "resume": "Experience\n- Analyzed datasets in Python using pandas for a class research project\n- Built a basic machine learning model with scikit-learn as a coursework assignment\n- Wrote SQL queries to pull data for reports\n\nEducation\nBS in Statistics\n\nSkills\nPython, pandas, SQL, Excel"
+    },
+    {
+      "id": "datasci-poor",
+      "label": "poor",
+      "jd_keywords": ["Python", "machine learning", "scikit-learn", "pandas", "SQL", "model evaluation", "data visualization", "A/B testing"],
+      "jd": "Data Scientist at Example Corp. Build machine learning models in Python using scikit-learn and pandas for feature engineering. Query production data with SQL, evaluate models rigorously, create data visualizations, and design A/B tests.",
+      "resume": "Experience\n- Designed mechanical assemblies for an automotive parts supplier\n- Ran stress simulations using CAD software\n- Coordinated with manufacturing teams on tolerances and materials\n\nEducation\nBS in Mechanical Engineering\n\nSkills\nCAD design, SolidWorks, structural analysis"
+    },
+    {
+      "id": "devops-strong",
+      "label": "strong",
+      "jd_keywords": ["Kubernetes", "Terraform", "AWS", "CI/CD", "monitoring", "infrastructure as code", "Docker", "incident response"],
+      "jd": "DevOps Engineer at Sample Startup Inc. Manage Kubernetes clusters on AWS, write infrastructure as code with Terraform, build CI/CD pipelines, containerize services with Docker, set up monitoring, and lead incident response.",
+      "resume": "Experience\n- Managed Kubernetes clusters on AWS for a production SaaS platform\n- Wrote infrastructure as code with Terraform for all cloud resources\n- Built CI/CD pipelines and containerized services with Docker\n- Set up monitoring dashboards and led incident response for outages\n\nEducation\nBS in Computer Science\n\nSkills\nKubernetes, Terraform, AWS, Docker, monitoring"
+    },
+    {
+      "id": "devops-medium",
+      "label": "medium",
+      "jd_keywords": ["Kubernetes", "Terraform", "AWS", "CI/CD", "monitoring", "infrastructure as code", "Docker", "incident response"],
+      "jd": "DevOps Engineer at Sample Startup Inc. Manage Kubernetes clusters on AWS, write infrastructure as code with Terraform, build CI/CD pipelines, containerize services with Docker, set up monitoring, and lead incident response.",
+      "resume": "Experience\n- Deployed applications to AWS using Docker containers\n- Set up a basic CI/CD pipeline for a small team\n- Monitored server uptime with a third-party dashboard tool\n\nEducation\nBS in Information Technology\n\nSkills\nAWS, Docker, Linux, bash scripting"
+    },
+    {
+      "id": "devops-poor",
+      "label": "poor",
+      "jd_keywords": ["Kubernetes", "Terraform", "AWS", "CI/CD", "monitoring", "infrastructure as code", "Docker", "incident response"],
+      "jd": "DevOps Engineer at Sample Startup Inc. Manage Kubernetes clusters on AWS, write infrastructure as code with Terraform, build CI/CD pipelines, containerize services with Docker, set up monitoring, and lead incident response.",
+      "resume": "Experience\n- Taught high school mathematics courses for four years\n- Developed curriculum materials and graded student assessments\n- Organized after-school tutoring programs\n\nEducation\nBA in Education\n\nSkills\nCurriculum design, classroom management, tutoring"
+    }
+  ]
+}

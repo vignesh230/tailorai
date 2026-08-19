@@ -33,19 +33,32 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return float(np.dot(va, vb) / denom) if denom else 0.0
 
 
+def _contains_contiguous_sequence(haystack: list[str], needle: list[str]) -> bool:
+    n = len(needle)
+    if n == 0 or n > len(haystack):
+        return False
+    return any(haystack[i : i + n] == needle for i in range(len(haystack) - n + 1))
+
+
 def keyword_coverage(keywords: list[str], resume_text: str) -> tuple[float, list[str], list[str]]:
-    """Bag-of-stemmed-words containment per keyword phrase against the resume.
-    ponytail: word-order/context is lost (e.g. "API testing" vs "testing an API"
-    both match); upgrade to phrase-level fuzzy matching if that proves too loose.
-    """
-    resume_words = set(_words(resume_text))
+    """Single-word keywords match by stemmed-token membership anywhere in the resume.
+    Multi-word keywords require the stemmed phrase to appear as a contiguous sequence
+    in the resume's stemmed token stream — bag-of-words containment alone would match
+    "REST API testing" against a resume with those three words scattered far apart,
+    which over-matches and under-reports genuine gaps."""
+    resume_tokens = _words(resume_text)
+    resume_word_set = set(resume_tokens)
     matched, missing = [], []
     for kw in keywords:
         kw_words = [w for w in _words(kw) if w]
-        if kw_words and all(w in resume_words for w in kw_words):
-            matched.append(kw)
-        else:
+        if not kw_words:
             missing.append(kw)
+            continue
+        if len(kw_words) == 1:
+            is_match = kw_words[0] in resume_word_set
+        else:
+            is_match = _contains_contiguous_sequence(resume_tokens, kw_words)
+        (matched if is_match else missing).append(kw)
     score = 100.0 * len(matched) / len(keywords) if keywords else 100.0
     return score, matched, missing
 

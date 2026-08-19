@@ -483,3 +483,23 @@ def test_screen_jd_rejects_skip_without_grounded_quote(monkeypatch):
     )
     result = analyze_router.screen_jd(RESUME_TEXT, JD_TEXT)
     assert result == {"verdict": "PASS", "skip_reason": None, "skip_quote": None}
+
+
+def test_analyze_rate_limit_returns_429_after_threshold(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(ai_client, "chat_json", _fake_chat_json)
+    monkeypatch.setattr(ai_client, "embed", _fake_embed)
+
+    resume_id, jd_id = _setup_resume_and_jd(client, auth_headers)
+    limit = int(analyze_router.ANALYZE_RATE_LIMIT.split("/")[0])
+
+    for _ in range(limit):
+        resp = client.post(
+            "/analyze", json={"resume_id": resume_id, "jd_id": jd_id}, headers=auth_headers
+        )
+        assert resp.status_code == 201
+
+    resp = client.post(
+        "/analyze", json={"resume_id": resume_id, "jd_id": jd_id}, headers=auth_headers
+    )
+    assert resp.status_code == 429
+    assert "detail" in resp.json()

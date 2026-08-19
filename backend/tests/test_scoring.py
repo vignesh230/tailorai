@@ -34,6 +34,39 @@ def test_keyword_coverage_empty_keywords_is_full_score():
     assert missing == []
 
 
+def test_keyword_coverage_multiword_scattered_does_not_match():
+    """Regression: bag-of-words containment used to match "REST API testing"
+    against a resume containing those three words far apart, over-matching and
+    under-reporting genuine gaps. A scattered occurrence must NOT count."""
+    scattered = (
+        "Experience\n"
+        "- Built a REST service in Python\n"
+        "- Wrote extensive API documentation\n"
+        "- Ran manual testing before every release\n"
+        "\nEducation\nBS in Computer Science\n\nSkills\nPython\n"
+    )
+    score, matched, missing = keyword_coverage(["REST API testing"], scattered)
+    assert "REST API testing" in missing
+    assert "REST API testing" not in matched
+
+
+def test_keyword_coverage_multiword_adjacent_does_match():
+    adjacent = (
+        "Experience\n"
+        "- Built REST API testing suites for a fintech startup\n"
+        "\nEducation\nBS in Computer Science\n\nSkills\nPython\n"
+    )
+    score, matched, missing = keyword_coverage(["REST API testing"], adjacent)
+    assert "REST API testing" in matched
+    assert "REST API testing" not in missing
+
+
+def test_keyword_coverage_multiword_tolerates_case_and_stemming():
+    adjacent = "Experience\n- built rest apis testing tools\nEducation\nBS\nSkills\nPython\n"
+    score, matched, missing = keyword_coverage(["REST API Testing"], adjacent)
+    assert "REST API Testing" in matched
+
+
 def test_cosine_similarity_identical_vectors_is_one():
     assert cosine_similarity([1.0, 0.0], [1.0, 0.0]) == 1.0
 
