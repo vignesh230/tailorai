@@ -114,6 +114,31 @@ def test_semantic_coverage_uses_chunks_not_raw_lines():
     assert any("Built REST APIs" in t and "FastAPI and PostgreSQL" in t for t in resume_texts_passed)
 
 
+def test_keyword_coverage_matches_canonical_form_spelled_out_verbatim():
+    """Regression: the naive "-es" suffix stemmer treated "kubernetes" as a
+    plural and truncated it to "kubernet", so a JD keyword "Kubernetes" never
+    matched a resume that spelled out "Kubernetes" in full (no abbreviation
+    involved at all)."""
+    resume = "Experience\n- Ran production Kubernetes clusters\nEducation\nBS\nSkills\nPython\n"
+    score, matched, missing = keyword_coverage(["Kubernetes"], resume)
+    assert "Kubernetes" in matched
+
+
+def test_keyword_coverage_matches_via_alias():
+    resume_with_alias = "Experience\n- Deployed services on k8s clusters\nEducation\nBS\nSkills\nPython\n"
+    score, matched, missing = keyword_coverage(["Kubernetes"], resume_with_alias)
+    assert "Kubernetes" in matched
+
+
+def test_keyword_coverage_dedupes_alias_equivalent_keywords():
+    """A JD that yields both "K8s" and "Kubernetes" as separate extracted
+    keywords should only be scored once, not double-count toward the total."""
+    resume_with_alias = "Experience\n- Deployed services on k8s clusters\nEducation\nBS\nSkills\nPython\n"
+    score, matched, missing = keyword_coverage(["K8s", "Kubernetes"], resume_with_alias)
+    assert len(matched) + len(missing) == 1
+    assert score == 100.0
+
+
 def test_cosine_similarity_identical_vectors_is_one():
     assert cosine_similarity([1.0, 0.0], [1.0, 0.0]) == 1.0
 

@@ -6,6 +6,8 @@ from typing import Callable
 
 import numpy as np
 
+from app.normalize import ALIASES, CANONICAL_FORMS
+
 WEIGHTS = {"keyword": 0.5, "semantic": 0.35, "formatting": 0.15}
 SEMANTIC_MATCH_THRESHOLD = 0.72
 
@@ -16,6 +18,13 @@ _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z(])")
 
 def _normalize_word(word: str) -> str:
     w = word.lower()
+    if w in ALIASES:
+        return ALIASES[w]
+    if w in CANONICAL_FORMS:
+        # Already a canonical base form (e.g. "kubernetes" typed out in full,
+        # not the "k8s" alias) -- the suffix stemmer below would otherwise
+        # wrongly treat words like this as an "-es" plural and truncate them.
+        return w
     if w.endswith("ies") and len(w) > 4:
         w = w[:-3] + "y"
     elif w.endswith("es") and len(w) > 3:
@@ -80,21 +89,32 @@ def keyword_coverage(keywords: list[str], resume_text: str) -> tuple[float, list
     Multi-word keywords require the stemmed phrase to appear as a contiguous sequence
     in the resume's stemmed token stream — bag-of-words containment alone would match
     "REST API testing" against a resume with those three words scattered far apart,
-    which over-matches and under-reports genuine gaps."""
+    which over-matches and under-reports genuine gaps.
+
+    Both the resume and the keywords go through the same alias-aware stemmer
+    (see app/normalize.py), so e.g. "k8s" in a resume matches a JD keyword
+    "Kubernetes". Keywords are deduped by their canonicalized form after that
+    mapping, so a JD that yields both "K8s" and "Kubernetes" as separate
+    extracted keywords is only scored once."""
     resume_tokens = _words(resume_text)
     resume_word_set = set(resume_tokens)
     matched, missing = [], []
+    seen_canonical: set[tuple[str, ...]] = set()
     for kw in keywords:
-        kw_words = [w for w in _words(kw) if w]
+        kw_words = tuple(w for w in _words(kw) if w)
         if not kw_words:
             missing.append(kw)
             continue
+        if kw_words in seen_canonical:
+            continue
+        seen_canonical.add(kw_words)
         if len(kw_words) == 1:
             is_match = kw_words[0] in resume_word_set
         else:
-            is_match = _contains_contiguous_sequence(resume_tokens, kw_words)
+            is_match = _contains_contiguous_sequence(resume_tokens, list(kw_words))
         (matched if is_match else missing).append(kw)
-    score = 100.0 * len(matched) / len(keywords) if keywords else 100.0
+    total = len(matched) + len(missing)
+    score = 100.0 * len(matched) / total if total else 100.0
     return score, matched, missing
 
 
@@ -190,8 +210,13 @@ def score_resume(
     embed_fn: Callable[[list[str]], list[list[float]]],
 ) -> dict:
     keyword_score, matched_keywords, missing_keywords = keyword_coverage(jd_keywords, resume_text)
+    # Use the deduped keyword count (matched + missing), not len(jd_keywords), so
+    # the semantic average lines up with keyword_coverage's own denominator.
     semantic_score, gap_candidates, _similarities = semantic_coverage(
-        missing_keywords, resume_text, embed_fn, total_keywords=len(jd_keywords)
+        missing_keywords,
+        resume_text,
+        embed_fn,
+        total_keywords=len(matched_keywords) + len(missing_keywords),
     )
     formatting_score, formatting_issues = formatting_coverage(resume_text)
 
