@@ -10,6 +10,8 @@ WEIGHTS = {"keyword": 0.5, "semantic": 0.35, "formatting": 0.15}
 SEMANTIC_MATCH_THRESHOLD = 0.72
 
 _WORD_RE = re.compile(r"[a-zA-Z0-9+#.]+")
+_BULLET_START_RE = re.compile(r"^[•\-–*▪◆➤❖✦]\s+|^\d+[.)]\s+")
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z(])")
 
 
 def _normalize_word(word: str) -> str:
@@ -25,6 +27,39 @@ def _normalize_word(word: str) -> str:
 
 def _words(text: str) -> list[str]:
     return [_normalize_word(w) for w in _WORD_RE.findall(text)]
+
+
+def _chunk_resume(resume_text: str) -> list[str]:
+    """Split resume text into embedding-comparison units on bullet boundaries
+    instead of raw lines, so a bullet that wraps onto a second line (no bullet
+    marker of its own) stays one chunk instead of being fragmented into two
+    incomplete halves. A run of lines with no bullet marker at all (e.g. a
+    summary paragraph) is kept together and then split by sentence instead."""
+    chunks: list[str] = []
+    current: list[str] = []
+
+    def flush() -> None:
+        if current:
+            chunks.append(" ".join(current).strip())
+            current.clear()
+
+    for raw_line in resume_text.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            flush()
+            continue
+        if _BULLET_START_RE.match(line) or not current:
+            flush()
+            current.append(_BULLET_START_RE.sub("", line))
+        else:
+            current.append(line)
+    flush()
+
+    final_chunks: list[str] = []
+    for chunk in chunks:
+        sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(chunk) if s.strip()]
+        final_chunks.extend(sentences if len(sentences) > 1 else [chunk])
+    return final_chunks
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -88,12 +123,12 @@ def semantic_coverage(
     if not missing_keywords:
         return 100.0, [], {}
 
-    resume_lines = [line.strip() for line in resume_text.split("\n") if line.strip()]
-    if not resume_lines:
+    resume_chunks = _chunk_resume(resume_text)
+    if not resume_chunks:
         score = 100.0 * matched_count / total if total else 0.0
         return score, list(missing_keywords), {kw: 0.0 for kw in missing_keywords}
 
-    resume_embeddings = embed_fn(resume_lines)
+    resume_embeddings = embed_fn(resume_chunks)
     keyword_embeddings = embed_fn(missing_keywords)
 
     similarities: dict[str, float] = {}

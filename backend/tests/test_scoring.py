@@ -1,6 +1,7 @@
 import pytest
 
 from app.scoring import (
+    _chunk_resume,
     cosine_similarity,
     formatting_coverage,
     keyword_coverage,
@@ -67,6 +68,50 @@ def test_keyword_coverage_multiword_tolerates_case_and_stemming():
     adjacent = "Experience\n- built rest apis testing tools\nEducation\nBS\nSkills\nPython\n"
     score, matched, missing = keyword_coverage(["REST API Testing"], adjacent)
     assert "REST API Testing" in matched
+
+
+def test_chunk_resume_merges_multiline_bullet_into_one_chunk():
+    """Regression: line-splitting fragmented a bullet that wraps onto a second
+    line (no bullet marker of its own) into two incomplete halves."""
+    wrapped = (
+        "Experience\n"
+        "- Built and maintained REST APIs serving 10k requests/day\n"
+        "  using FastAPI and PostgreSQL for a fintech startup\n"
+        "- Led a team of 3 engineers\n"
+    )
+    chunks = _chunk_resume(wrapped)
+    assert any(
+        "Built and maintained REST APIs" in c and "FastAPI and PostgreSQL" in c for c in chunks
+    )
+    assert not any(c.strip() == "using FastAPI and PostgreSQL for a fintech startup" for c in chunks)
+
+
+def test_chunk_resume_splits_non_bulleted_paragraph_by_sentence():
+    # No heading, so nothing gets fused onto the first sentence.
+    paragraph = "Backend engineer with 5 years of experience. Focused on distributed systems. Enjoys mentoring.\n"
+    chunks = _chunk_resume(paragraph)
+    assert "Backend engineer with 5 years of experience." in chunks
+    assert "Focused on distributed systems." in chunks
+    assert "Enjoys mentoring." in chunks
+
+
+def test_semantic_coverage_uses_chunks_not_raw_lines():
+    """Behavioral check that semantic_coverage's embed_fn is called with
+    bullet-merged chunks, not the old line-split units."""
+    captured = {}
+
+    def capturing_embed(texts):
+        captured.setdefault("calls", []).append(list(texts))
+        return [[0.0, 0.0] for _ in texts]
+
+    wrapped_resume = (
+        "Experience\n"
+        "- Built REST APIs\n"
+        "  using FastAPI and PostgreSQL\n"
+    )
+    semantic_coverage(["Kubernetes"], wrapped_resume, embed_fn=capturing_embed, total_keywords=1)
+    resume_texts_passed = captured["calls"][0]
+    assert any("Built REST APIs" in t and "FastAPI and PostgreSQL" in t for t in resume_texts_passed)
 
 
 def test_cosine_similarity_identical_vectors_is_one():
