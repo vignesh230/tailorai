@@ -100,6 +100,11 @@ def test_analyze_full_flow_with_mocked_nim(client, auth_headers, monkeypatch):
     assert body["screening"]["fit_verdict"] in {"STRONG MATCH", "SOLID MATCH", "REACH", "WEAK MATCH"}
     assert "Python" in body["screening"]["recruiter_note"]
 
+    # 3 JD keywords (Python, Docker, Kubernetes), 1 hard-matched (Python).
+    assert body["confidence"]["total_keywords"] == 3
+    assert body["confidence"]["hard_match_fraction"] == round(1 / 3, 3)
+    assert body["confidence"]["borderline_keyword_count"] >= 0
+
 
 def test_analyze_requires_auth(client):
     resp = client.post("/analyze", json={"resume_id": 1, "jd_id": 1})

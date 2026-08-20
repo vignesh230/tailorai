@@ -18,6 +18,7 @@ from app.normalize import ALIASES, CANONICAL_FORMS
 # synthetic set, not a definitive calibration.
 WEIGHTS = {"keyword": 0.5, "semantic": 0.35, "formatting": 0.15}
 SEMANTIC_MATCH_THRESHOLD = 0.72
+BORDERLINE_MARGIN = 0.05
 
 _WORD_RE = re.compile(r"[a-zA-Z0-9+#.]+")
 _BULLET_START_RE = re.compile(r"^[•\-–*▪◆➤❖✦]\s+|^\d+[.)]\s+")
@@ -224,14 +225,15 @@ def score_resume(
     the labeled eval set without duplicating this function's logic."""
     weights = weights or WEIGHTS
     keyword_score, matched_keywords, missing_keywords = keyword_coverage(jd_keywords, resume_text)
+    total_keywords = len(matched_keywords) + len(missing_keywords)
     # Use the deduped keyword count (matched + missing), not len(jd_keywords), so
     # the semantic average lines up with keyword_coverage's own denominator.
-    semantic_score, gap_candidates, _similarities = semantic_coverage(
+    semantic_score, gap_candidates, similarities = semantic_coverage(
         missing_keywords,
         resume_text,
         embed_fn,
         threshold=semantic_threshold,
-        total_keywords=len(matched_keywords) + len(missing_keywords),
+        total_keywords=total_keywords,
     )
     formatting_score, formatting_issues = formatting_coverage(resume_text)
 
@@ -241,8 +243,18 @@ def score_resume(
         + weights["formatting"] * formatting_score
     )
 
+    borderline_count = sum(
+        1 for sim in similarities.values() if abs(sim - semantic_threshold) <= BORDERLINE_MARGIN
+    )
+    confidence = {
+        "borderline_keyword_count": borderline_count,
+        "hard_match_fraction": round(len(matched_keywords) / total_keywords, 3) if total_keywords else 1.0,
+        "total_keywords": total_keywords,
+    }
+
     return {
         "ats_score": ats_score,
+        "confidence": confidence,
         "component_breakdown": {
             "keyword_score": round(keyword_score, 1),
             "semantic_score": round(semantic_score, 1),

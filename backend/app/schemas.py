@@ -90,6 +90,12 @@ class Screening(BaseModel):
     recruiter_note: str
 
 
+class Confidence(BaseModel):
+    borderline_keyword_count: int  # keywords within +/-0.05 of the semantic match threshold
+    hard_match_fraction: float  # fraction of JD keywords that hard-matched, 0-1
+    total_keywords: int
+
+
 class AnalysisOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -103,6 +109,7 @@ class AnalysisOut(BaseModel):
     gap_flags: list[ProjectSuggestion]
     formatting_issues: list[str]
     screening: Screening
+    confidence: Confidence
     created_at: datetime
 
 

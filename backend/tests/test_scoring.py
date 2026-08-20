@@ -252,6 +252,27 @@ def test_score_resume_accepts_weight_and_threshold_overrides():
     assert overridden_result["ats_score"] != default_result["ats_score"]
 
 
+def test_score_resume_confidence_reflects_hard_matches_and_borderline_similarity():
+    # A unit vector at cosine similarity exactly 0.72 against [1.0, 0.0].
+    BORDERLINE_VEC = [0.72, 0.6939740629158989]
+
+    def fake_embed(texts):
+        vectors = []
+        for t in texts:
+            if "kubernetes" in t.lower():
+                vectors.append(BORDERLINE_VEC)  # right at the threshold -> borderline
+            else:
+                vectors.append([1.0, 0.0])  # cosine 1.0 vs a [1.0, 0.0] resume chunk
+        return vectors
+
+    resume = "Experience\n- Built REST APIs in Python\nEducation\nBS\nSkills\nPython\n"
+    result = score_resume(["Python", "Kubernetes"], resume, embed_fn=fake_embed)
+
+    assert result["confidence"]["total_keywords"] == 2
+    assert result["confidence"]["hard_match_fraction"] == 0.5  # only "Python" hard-matched
+    assert result["confidence"]["borderline_keyword_count"] == 1  # "Kubernetes" at cosine 0.72
+
+
 def test_score_resume_blends_components_with_documented_weights():
     def fake_embed(texts):
         return [[1.0, 0.0] for _ in texts]  # everything "matches" semantically

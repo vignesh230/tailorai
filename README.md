@@ -64,8 +64,8 @@ frontend (Next.js App Router)  --->  backend (FastAPI)  --->  Postgres
 
 | Component | Weight | What it measures |
 |---|---|---|
-| **Keyword coverage** | 0.5 | NIM extracts required skills/keywords from the JD as JSON. Single-word keywords match by stemmed-token membership anywhere in the resume (handles simple plurals/suffixes). Multi-word keywords require the stemmed phrase to appear as a *contiguous* sequence in the resume — scattered-but-present words don't count, since that over-matched phrases like "REST API testing" against a resume that merely mentioned REST, API, and testing in unrelated lines. This is the most literal, ATS-like signal, so it carries the most weight. |
-| **Semantic coverage** | 0.35 | For every keyword that failed the hard match, embed it and every resume line (NIM embeddings) and take the best cosine similarity. The average of those best-matches is the semantic score. A similarity ≥ 0.72 counts as "covered" (paraphrase-level); below that, the keyword becomes a genuine gap candidate. |
+| **Keyword coverage** | 0.5 | NIM extracts required skills/keywords from the JD as JSON. Both the keywords and the resume text pass through the same normalizer first (lowercase, a small alias table like k8s->kubernetes, js->javascript — see `app/normalize.py`), and keywords are deduped by their normalized form. Single-word keywords then match by stemmed-token membership anywhere in the resume (handles simple plurals/suffixes). Multi-word keywords require the stemmed phrase to appear as a *contiguous* sequence in the resume — scattered-but-present words don't count, since that over-matched phrases like "REST API testing" against a resume that merely mentioned REST, API, and testing in unrelated lines. This is the most literal, ATS-like signal, so it carries the most weight. |
+| **Semantic coverage** | 0.35 | The resume is chunked by bullet (a wrapped multi-line bullet stays one chunk; non-bulleted prose falls back to sentence-splitting), not by raw line. Every JD keyword is credited: a hard-matched keyword counts as a perfect 1.0, and every keyword that failed the hard match is embedded (NIM) and compared against every resume chunk, taking the best cosine similarity. The average across *all* keywords is the semantic score. A similarity ≥ 0.72 counts as "covered" (paraphrase-level) for keywords that failed the hard match; below that, the keyword becomes a genuine gap candidate. |
 | **Formatting / parse-safety** | 0.15 | Pure heuristics, no NIM call: missing standard section headings (Experience/Education/Skills), multi-space/tab column-like spacing (table risk), non-standard bullet glyphs, extremely long unbroken lines, or too few line breaks overall. Starts at 100, loses points per flag. |
 
 `matched_keywords` / `missing_keywords` come from the hard-match step.
@@ -74,6 +74,18 @@ semantic threshold — i.e., skills genuinely absent from the resume, each
 paired with an AI-suggested sample project and a one-line reason it matters
 for that specific job description. Everything else missing-but-semantically-
 present becomes a candidate for a tailored bullet rewrite instead.
+
+### Confidence signal
+
+The `/analyze` response also includes a `confidence` object, informational
+only (it doesn't affect `ats_score`):
+
+- `total_keywords` — deduped JD keyword count used as the scoring denominator.
+- `hard_match_fraction` — fraction of those keywords that hard-matched verbatim (0-1).
+- `borderline_keyword_count` — how many keywords landed within ±0.05 of the
+  0.72 semantic threshold. A high count means the covered/gap split for this
+  analysis is close to a coin flip for several keywords, worth a second look
+  rather than trusting the ats_score at face value.
 
 ## Calibration
 

@@ -425,6 +425,7 @@ def analyze(
         gap_flags=gap_flags,
         formatting_issues=result["formatting_issues"],
         screening=screening,
+        confidence=result["confidence"],
     )
     db.add(analysis)
     db.commit()
