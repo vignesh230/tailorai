@@ -1,3 +1,5 @@
+import pytest
+
 from app.scoring import (
     cosine_similarity,
     formatting_coverage,
@@ -101,6 +103,44 @@ def test_semantic_coverage_uses_embeddings_to_find_gap_candidates():
     assert "Kubernetes" in gap_candidates
     assert "backend development" not in gap_candidates
     assert sims["backend development"] > sims["Kubernetes"]
+
+
+def test_semantic_coverage_credits_hard_matched_keywords_in_aggregate():
+    """Regression: the aggregate score used to average only over missing_keywords,
+    so a JD where most keywords already hard-matched got no credit for them and
+    could score as low as its single worst semantic gap. total_keywords=3 with
+    2 already hard-matched (not in missing_keywords) should credit those 2 as
+    perfect matches: (2*1.0 + 0.0) / 3, not 0.0 / 1."""
+
+    def fake_embed(texts):
+        return [[0.0, 0.0] for _ in texts]  # zero similarity for the one missing keyword
+
+    score, gap_candidates, sims = semantic_coverage(
+        ["Kubernetes"], RESUME_TEXT, embed_fn=fake_embed, total_keywords=3
+    )
+    assert score == pytest.approx(100.0 * 2 / 3)
+    assert "Kubernetes" in gap_candidates  # threshold behavior unchanged
+
+
+def test_semantic_coverage_defaults_to_missing_only_denominator():
+    """Without total_keywords, behavior is unchanged from before Stage 1 (existing
+    direct callers of semantic_coverage that don't track the full keyword count)."""
+
+    def fake_embed(texts):
+        return [[0.0, 0.0] for _ in texts]
+
+    score, gap_candidates, sims = semantic_coverage(["Kubernetes"], RESUME_TEXT, embed_fn=fake_embed)
+    assert score == 0.0
+
+
+def test_score_resume_semantic_score_credits_hard_matched_keywords():
+    def fake_embed(texts):
+        return [[0.0, 0.0] for _ in texts]  # zero similarity for anything missing
+
+    result = score_resume(["Python", "Kubernetes"], RESUME_TEXT, embed_fn=fake_embed)
+    # "Python" hard-matches (Skills line), "Kubernetes" doesn't and has zero semantic
+    # similarity -- semantic_score should reflect 1 of 2 JD keywords covered, not 0.
+    assert result["component_breakdown"]["semantic_score"] == pytest.approx(50.0)
 
 
 def test_formatting_coverage_flags_missing_headings():

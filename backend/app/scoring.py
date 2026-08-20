@@ -68,17 +68,30 @@ def semantic_coverage(
     resume_text: str,
     embed_fn: Callable[[list[str]], list[list[float]]],
     threshold: float = SEMANTIC_MATCH_THRESHOLD,
+    total_keywords: int | None = None,
 ) -> tuple[float, list[str], dict[str, float]]:
     """For keywords that failed hard matching, check paraphrase-level presence via
     embeddings. Returns (score, gap_candidates, similarity_by_keyword). gap_candidates
     are keywords that failed BOTH hard match and the semantic threshold — genuinely
-    absent skills."""
+    absent skills.
+
+    The aggregate score is credited over `total_keywords` (every JD keyword), with
+    each hard-matched keyword (not in `missing_keywords`) counted as a perfect 1.0
+    match and each missing keyword contributing its best cosine similarity. Averaging
+    only over the missing keywords understated semantic_score whenever most keywords
+    were already hard-matched, since those "obviously covered" keywords never
+    contributed to the average. Defaults to len(missing_keywords) so callers that
+    don't track the full keyword set keep the old missing-only average."""
+    total = total_keywords if total_keywords is not None else len(missing_keywords)
+    matched_count = max(total - len(missing_keywords), 0)
+
     if not missing_keywords:
         return 100.0, [], {}
 
     resume_lines = [line.strip() for line in resume_text.split("\n") if line.strip()]
     if not resume_lines:
-        return 0.0, list(missing_keywords), {kw: 0.0 for kw in missing_keywords}
+        score = 100.0 * matched_count / total if total else 0.0
+        return score, list(missing_keywords), {kw: 0.0 for kw in missing_keywords}
 
     resume_embeddings = embed_fn(resume_lines)
     keyword_embeddings = embed_fn(missing_keywords)
@@ -91,7 +104,7 @@ def semantic_coverage(
         if best < threshold:
             gap_candidates.append(kw)
 
-    score = 100.0 * (sum(similarities.values()) / len(similarities))
+    score = 100.0 * (matched_count + sum(similarities.values())) / total if total else 100.0
     return score, gap_candidates, similarities
 
 
@@ -143,7 +156,7 @@ def score_resume(
 ) -> dict:
     keyword_score, matched_keywords, missing_keywords = keyword_coverage(jd_keywords, resume_text)
     semantic_score, gap_candidates, _similarities = semantic_coverage(
-        missing_keywords, resume_text, embed_fn
+        missing_keywords, resume_text, embed_fn, total_keywords=len(jd_keywords)
     )
     formatting_score, formatting_issues = formatting_coverage(resume_text)
 
