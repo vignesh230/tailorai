@@ -90,9 +90,25 @@ cd backend
 python -m eval.calibrate
 ```
 
-Last run: **100% pairwise ordering accuracy** and a **0.96 Spearman
+Last run: **100% pairwise ordering accuracy** and a **0.961 Spearman
 correlation** between `ats_score` and label. See `backend/eval/README.md` for
 the full method and why the dataset is explicitly synthetic.
+
+`eval/sweep.py` sweeps the semantic threshold (0.60-0.85) and a small grid of
+weight combinations against the same set to check whether a different config
+scores better:
+
+```bash
+cd backend
+python -m eval.sweep
+```
+
+Last run found the shipped defaults tied for the best result on this set (the
+whole swept threshold range scored identically); see the comment above
+`WEIGHTS`/`SEMANTIC_MATCH_THRESHOLD` in `app/scoring.py`. This is directional
+on a 12-entry synthetic set, not a definitive calibration -- it did not find
+evidence to change the defaults, which is different from proving they're
+optimal against real applicant data.
 
 ## Quickstart
 

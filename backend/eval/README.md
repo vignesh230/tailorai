@@ -28,6 +28,17 @@ python -m eval.calibrate
 ## Result
 
 At the time this was last run: **100% pairwise ordering accuracy** (48/48
-label pairs correctly ordered) and a **Spearman rank correlation of 0.96**
+label pairs correctly ordered) and a **Spearman rank correlation of 0.961**
 between `ats_score` and label. The weights and threshold are presented in the
 main README as calibrated against this method, not asserted from intuition.
+
+## Recalibration sweep
+
+`sweep.py` sweeps the semantic threshold (0.60-0.85, step 0.01) and a small
+grid of weight combinations against this same dataset, to check whether a
+different config scores better. Run with `python -m eval.sweep` from
+`backend/`. It only reports; it does not change any default in
+`app/scoring.py`. Last run found the shipped defaults tied for best on this
+set -- see the comment above `WEIGHTS`/`SEMANTIC_MATCH_THRESHOLD` in
+`app/scoring.py` for the specific numbers. This is directional on a 12-entry
+synthetic set, not proof the defaults are optimal against real data.

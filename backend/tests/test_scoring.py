@@ -233,6 +233,25 @@ def test_formatting_coverage_flags_table_like_spacing():
     assert any("column" in issue.lower() or "table" in issue.lower() for issue in issues)
 
 
+def test_score_resume_accepts_weight_and_threshold_overrides():
+    """Only backend/eval/sweep.py uses these overrides; production code (and
+    every other test) relies on the defaults, which must stay untouched."""
+
+    def fake_embed(texts):
+        return [[1.0, 0.0] for _ in texts]
+
+    default_result = score_resume(["Python", "Kubernetes"], RESUME_TEXT, embed_fn=fake_embed)
+    overridden_result = score_resume(
+        ["Python", "Kubernetes"],
+        RESUME_TEXT,
+        embed_fn=fake_embed,
+        semantic_threshold=0.99,
+        weights={"keyword": 0.8, "semantic": 0.1, "formatting": 0.1},
+    )
+    assert overridden_result["component_breakdown"]["keyword_weight"] == 0.8
+    assert overridden_result["ats_score"] != default_result["ats_score"]
+
+
 def test_score_resume_blends_components_with_documented_weights():
     def fake_embed(texts):
         return [[1.0, 0.0] for _ in texts]  # everything "matches" semantically

@@ -8,6 +8,14 @@ import numpy as np
 
 from app.normalize import ALIASES, CANONICAL_FORMS
 
+# backend/eval/sweep.py swept threshold 0.60-0.85 (step 0.01) and a grid of
+# weight combinations around these defaults against the labeled synthetic
+# eval set. Result: this exact config (0.72 / 0.5-0.35-0.15) is tied for the
+# best pairwise-ordering accuracy and Spearman correlation found (100% /
+# 0.961) -- the whole swept threshold range scored identically on this set,
+# so the sweep found no evidence to move off these defaults. See
+# eval/sweep.py's module docstring: this is directional on a 12-entry
+# synthetic set, not a definitive calibration.
 WEIGHTS = {"keyword": 0.5, "semantic": 0.35, "formatting": 0.15}
 SEMANTIC_MATCH_THRESHOLD = 0.72
 
@@ -208,7 +216,13 @@ def score_resume(
     jd_keywords: list[str],
     resume_text: str,
     embed_fn: Callable[[list[str]], list[list[float]]],
+    semantic_threshold: float = SEMANTIC_MATCH_THRESHOLD,
+    weights: dict[str, float] | None = None,
 ) -> dict:
+    """semantic_threshold and weights default to the shipped constants above;
+    they're only overridden by backend/eval/sweep.py to recalibrate against
+    the labeled eval set without duplicating this function's logic."""
+    weights = weights or WEIGHTS
     keyword_score, matched_keywords, missing_keywords = keyword_coverage(jd_keywords, resume_text)
     # Use the deduped keyword count (matched + missing), not len(jd_keywords), so
     # the semantic average lines up with keyword_coverage's own denominator.
@@ -216,14 +230,15 @@ def score_resume(
         missing_keywords,
         resume_text,
         embed_fn,
+        threshold=semantic_threshold,
         total_keywords=len(matched_keywords) + len(missing_keywords),
     )
     formatting_score, formatting_issues = formatting_coverage(resume_text)
 
     ats_score = round(
-        WEIGHTS["keyword"] * keyword_score
-        + WEIGHTS["semantic"] * semantic_score
-        + WEIGHTS["formatting"] * formatting_score
+        weights["keyword"] * keyword_score
+        + weights["semantic"] * semantic_score
+        + weights["formatting"] * formatting_score
     )
 
     return {
@@ -232,9 +247,9 @@ def score_resume(
             "keyword_score": round(keyword_score, 1),
             "semantic_score": round(semantic_score, 1),
             "formatting_score": round(formatting_score, 1),
-            "keyword_weight": WEIGHTS["keyword"],
-            "semantic_weight": WEIGHTS["semantic"],
-            "formatting_weight": WEIGHTS["formatting"],
+            "keyword_weight": weights["keyword"],
+            "semantic_weight": weights["semantic"],
+            "formatting_weight": weights["formatting"],
         },
         "matched_keywords": matched_keywords,
         "missing_keywords": missing_keywords,
